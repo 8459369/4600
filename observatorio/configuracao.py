@@ -1,8 +1,16 @@
 import os
 
 
+def _variavel_obrigatoria(nome: str) -> str:
+    valor = os.environ.get(nome)
+    if not valor:
+        raise RuntimeError(f"{nome} não está definida (ver .env.example)")
+    return valor
+
+
 def url_base_dados() -> str:
-    url = os.environ.get("DATABASE_URL")
-    if not url:
-        raise RuntimeError("DATABASE_URL não está definida (ver .env.example)")
-    return url
+    return _variavel_obrigatoria("DATABASE_URL")
+
+
+def chave_secreta() -> str:
+    return _variavel_obrigatoria("SECRET_KEY")
