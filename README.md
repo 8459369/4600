@@ -8,7 +8,7 @@ Repositório: https://github.com/8459369/4600
 
 - Python 3.14 (versão em que foi testado)
 - PostgreSQL 17
-- Podman, para o script de validação e para a base de dados local dos exemplos abaixo
+- Podman, só para a base de dados local dos exemplos abaixo
 
 ## Estrutura
 
@@ -16,7 +16,14 @@ Repositório: https://github.com/8459369/4600
 | --- | --- |
 | `observatorio/__init__.py` | Fábrica da aplicação Flask (`create_app`) |
 | `observatorio/configuracao.py` | Leitura da configuração a partir do ambiente |
-| ...
+| `observatorio/rotas.py` | Rotas e respostas (camada de interface) |
+| `observatorio/servicos.py` | Validação e transações |
+| `observatorio/dados.py` | Acesso à base de dados (todo o SQL da aplicação) |
+| `observatorio/modelos.py` | `Organizacao` e `Dominio` |
+| `observatorio/dominios.py` | Normalização de nomes de domínio |
+| `observatorio/templates/` | Páginas HTML (Jinja) |
+| `sql/criar_base_dados.sql` | Modelo de dados (5 tabelas), para uma base vazia |
+| `sql/dados_iniciais.sql` | Dados de exemplo: tipos de organização e as 26 freguesias de Amarante (DICOFRE) |
 
 
 ## Configuração
@@ -24,8 +31,9 @@ Repositório: https://github.com/8459369/4600
 | Variável | Obrigatória | Descrição |
 | --- | --- | --- |
 | `DATABASE_URL` | sim | URL de ligação ao PostgreSQL, por exemplo `postgresql://utilizador:palavra_passe@localhost:5432/observatorio` |
+| `SECRET_KEY` | sim | Chave que assina as mensagens da sessão. Gerar com `python -c "import secrets; print(secrets.token_hex(32))"` |
 
-Copiar `.env.example` para `.env`. O ficheiro está no `.gitignore`. O Flask carrega-o através do `python-dotenv`. Sem `DATABASE_URL` a aplicação não arranca e termina com `RuntimeError`.
+Copiar `.env.example` para `.env`. O ficheiro está no `.gitignore`. O Flask carrega-o através do `python-dotenv`. Sem `DATABASE_URL` ou sem `SECRET_KEY` a aplicação não arranca e termina com `RuntimeError`.
 
 ## Instalação
 
@@ -59,3 +67,11 @@ Num servidor existente, aplicar os mesmos dois ficheiros por esta ordem com `psq
 
 Serve em `http://127.0.0.1:5000`. É o servidor de desenvolvimento do Flask, não serve para produção.
 
+| Método e caminho | Função |
+| --- | --- |
+| `GET /` | Lista de organizações |
+| `GET`, `POST /organizacoes/nova` | Registar uma organização |
+| `GET /organizacoes/<id>` | Ficha e domínios da organização |
+| `POST /organizacoes/<id>/dominios` | Associar um domínio |
+
+Não há autenticação nem proteção CSRF: a aplicação serve só uma máquina de confiança.
