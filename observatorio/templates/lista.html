@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block conteudo %}
+  <h1>Organizações</h1>
+  <p><a href="{{ url_for('nova') }}">Registar organização</a></p>
+  {% if not organizacoes %}
+    <p>Ainda não há organizações registadas.</p>
+  {% else %}
+    <table>
+      <thead><tr><th>Nome</th><th>Tipo</th><th>Freguesia</th></tr></thead>
+      <tbody>
+        {% for o in organizacoes %}
+          <tr>
+            <td><a href="{{ url_for('ficha', organizacao_id=o.id) }}">{{ o.nome }}</a></td>
+            <td>{{ o.tipo }}</td>
+            <td>{{ o.freguesia or "" }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% endif %}
+{% endblock %}

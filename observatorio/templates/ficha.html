@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block titulo %}{{ organizacao.nome }}{% endblock %}
+{% block conteudo %}
+  <h1>{{ organizacao.nome }}</h1>
+  <dl>
+    <dt>NIF</dt><dd>{{ organizacao.nif or "—" }}</dd>
+    <dt>Tipo</dt><dd>{{ organizacao.tipo }}</dd>
+    <dt>Setor</dt><dd>{{ organizacao.setor }}</dd>
+    <dt>Freguesia</dt><dd>{{ organizacao.freguesia or "—" }}</dd>
+  </dl>
+  <h2>Domínios associados</h2>
+  {% if not dominios %}
+    <p>Sem domínios associados.</p>
+  {% else %}
+    <ul>
+      {% for d in dominios %}<li>{{ d.nome }}</li>{% endfor %}
+    </ul>
+  {% endif %}
+  <form method="post" action="{{ url_for('associar', organizacao_id=organizacao.id) }}">
+    <label>Domínio
+      <input name="dominio" placeholder="amarante.pt" required>
+    </label>
+    <p><button type="submit">Associar</button></p>
+  </form>
+{% endblock %}

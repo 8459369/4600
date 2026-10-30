@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="pt-PT">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block titulo %}Organizações{% endblock %} · Observatório de Cibersegurança de Amarante</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 52rem; margin: 0 auto; padding: 1rem; color: #222; }
+    header { display: flex; gap: 1rem; align-items: baseline; border-bottom: 1px solid #ccc; margin-bottom: 1.5rem; }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { text-align: left; padding: .4rem .6rem; border-bottom: 1px solid #ddd; }
+    label { display: block; margin-top: .8rem; }
+    input, select { padding: .3rem; min-width: 20rem; }
+    .aviso { padding: .5rem .8rem; border: 1px solid #999; background: #f2f2f2; }
+    .erro { border-color: #b00020; color: #b00020; background: #fdecee; }
+  </style>
+</head>
+<body>
+  <header>
+    <a href="{{ url_for('lista') }}">Organizações</a>
+    <strong>Observatório de Cibersegurança de Amarante</strong>
+  </header>
+  <main>
+    {% for categoria, mensagem in get_flashed_messages(with_categories=true) %}
+      <p class="aviso {{ categoria }}">{{ mensagem }}</p>
+    {% endfor %}
+    {% block conteudo %}{% endblock %}
+  </main>
+</body>
+</html>

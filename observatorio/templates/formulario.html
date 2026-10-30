@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block titulo %}Nova organização{% endblock %}
+{% block conteudo %}
+  <h1>Nova organização</h1>
+  {% if erro %}<p class="aviso erro">{{ erro }}</p>{% endif %}
+  <form method="post">
+    <label>Nome
+      <input name="nome" value="{{ campos.get('nome', '') }}" required>
+    </label>
+    <label>NIF (opcional)
+      <input name="nif" value="{{ campos.get('nif', '') }}" inputmode="numeric" maxlength="9">
+    </label>
+    <label>Tipo
+      <select name="tipo" required>
+        <option value="">Escolher…</option>
+        {% for id, nome in tipos %}
+          <option value="{{ id }}" {{ 'selected' if campos.get('tipo') == id|string }}>{{ nome }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>Setor
+      <select name="setor" required>
+        <option value="">Escolher…</option>
+        {% for codigo, nome in setores.items() %}
+          <option value="{{ codigo }}" {{ 'selected' if campos.get('setor') == codigo }}>{{ nome }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>Freguesia (opcional)
+      <select name="freguesia">
+        <option value="">Sem freguesia</option>
+        {% for id, nome in freguesias %}
+          <option value="{{ id }}" {{ 'selected' if campos.get('freguesia') == id|string }}>{{ nome }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <p><button type="submit">Registar</button></p>
+  </form>
+{% endblock %}
