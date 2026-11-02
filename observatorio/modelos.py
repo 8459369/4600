@@ -25,6 +25,7 @@ class Seed:
     id: int
     organizacao_id: int
     dominio_id: int
+    dominio: str
     modo: str
     motivo: str
     habilitada: bool

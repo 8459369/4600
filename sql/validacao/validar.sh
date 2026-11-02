@@ -45,5 +45,10 @@ DATABASE_URL="postgresql://postgres:validacao@127.0.0.1:${porta}/observatorio" \
     SECRET_KEY=validacao \
     PYTHONPATH="$raiz" \
     python "$raiz/sql/validacao/testar_acesso.py"
+PYTHONPATH="$raiz" python -m observatorio.recolher --help >/dev/null
+DATABASE_URL="postgresql://postgres:validacao@127.0.0.1:${porta}/observatorio" \
+    SECRET_KEY=validacao \
+    PYTHONPATH="$raiz" \
+    python "$raiz/sql/validacao/testar_coletor_dns.py"
 
 echo "Validação do modelo concluída no PostgreSQL 17."

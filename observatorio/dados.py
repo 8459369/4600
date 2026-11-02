@@ -130,9 +130,13 @@ def obter_seed(ligacao: psycopg.Connection, seed_id: int) -> Seed | None:
     with ligacao.cursor(row_factory=class_row(Seed)) as cursor:
         cursor.execute(
             """
-            SELECT id, organizacao_id, dominio_id, modo, motivo, habilitada
+            SELECT seed_descoberta.id, seed_descoberta.organizacao_id,
+                   seed_descoberta.dominio_id, dominio.nome AS dominio,
+                   seed_descoberta.modo, seed_descoberta.motivo,
+                   seed_descoberta.habilitada
             FROM seed_descoberta
-            WHERE id = %s
+            JOIN dominio ON dominio.id = seed_descoberta.dominio_id
+            WHERE seed_descoberta.id = %s
             """,
             (seed_id,),
         )
