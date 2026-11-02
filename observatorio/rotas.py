@@ -38,14 +38,15 @@ def nova() -> str | Response | tuple[str, int]:
 
 
 def ficha(organizacao_id: int) -> str:
-    resultado = servicos.obter_ficha(organizacao_id)
+    resultado = servicos.obter_ficha_com_recolhas(organizacao_id)
     if resultado is None:
         abort(404)
-    organizacao, dominios = resultado
+    organizacao, dominios, seeds = resultado
     return render_template(
         "ficha.html",
         organizacao=organizacao,
         dominios=dominios,
+        seeds=seeds,
         setores=servicos.SETORES,
     )
 

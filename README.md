@@ -96,7 +96,7 @@ Serve em `http://127.0.0.1:5000`. É o servidor de desenvolvimento do Flask, nã
 | --- | --- |
 | `GET /` | Lista de organizações |
 | `GET`, `POST /organizacoes/nova` | Regista uma organização |
-| `GET /organizacoes/<id>` | Ficha e domínios da organização |
+| `GET /organizacoes/<id>` | Ficha, domínios, recolhas e histórico da organização |
 | `POST /organizacoes/<id>/dominios` | Associa um domínio |
 
 Não há autenticação nem proteção CSRF: a aplicação serve só uma máquina de confiança.

@@ -1,4 +1,50 @@
 {% extends "base.html" %}
+{% macro mostrar_recolha(recolha) %}
+  <article class="recolha {{ recolha.estado }}">
+    <h5>Recolha #{{ recolha.id }} — {{ recolha.estado }}</h5>
+    <dl>
+      <dt>Coletor</dt><dd>{{ recolha.coletor }}</dd>
+      <dt>Modo</dt><dd>{{ recolha.modo }}</dd>
+      <dt>Início</dt><dd>{{ recolha.iniciada_em.strftime("%d/%m/%Y %H:%M") }}</dd>
+      {% if recolha.terminada_em %}
+        <dt>Fim</dt><dd>{{ recolha.terminada_em.strftime("%d/%m/%Y %H:%M") }}</dd>
+      {% endif %}
+    </dl>
+    {% if recolha.erro %}
+      <p class="aviso erro">{{ recolha.erro }}</p>
+    {% endif %}
+    {% if recolha.observacoes %}
+      <h5>Observações DNS</h5>
+      <table>
+        <thead><tr><th>Fonte</th><th>Referência</th><th>Ativo</th><th>Resultado</th><th>Dados</th></tr></thead>
+        <tbody>
+          {% for observacao in recolha.observacoes %}
+            <tr>
+              <td>{{ observacao.fonte }}</td>
+              <td>{{ observacao.referencia }}</td>
+              <td>{{ observacao.ativo }}</td>
+              <td>{{ "sucesso" if observacao.sucesso else "erro" }}</td>
+              <td>
+                <pre>{{ observacao.dados | tojson(indent=2) }}</pre>
+                {% if observacao.erro %}<span class="erro">{{ observacao.erro }}</span>{% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <p>Sem observações.</p>
+    {% endif %}
+    {% if recolha.ligacoes %}
+      <h5>Ligações observadas</h5>
+      <ul>
+        {% for ligacao in recolha.ligacoes %}
+          <li>{{ ligacao.tipo }}: {{ ligacao.origem }} → {{ ligacao.destino }}</li>
+        {% endfor %}
+      </ul>
+    {% endif %}
+  </article>
+{% endmacro %}
 {% block titulo %}{{ organizacao.nome }}{% endblock %}
 {% block conteudo %}
   <h1>{{ organizacao.nome }}</h1>
@@ -22,4 +68,35 @@
     </label>
     <p><button type="submit">Associa</button></p>
   </form>
+  <h2>Recolhas DNS</h2>
+  {% if not seeds %}
+    <p>Sem seeds de descoberta associadas.</p>
+  {% else %}
+    {% for seed in seeds %}
+      <section>
+        <h3>{{ seed.dominio }}</h3>
+        <p>Modo: {{ seed.modo }} · Motivo: {{ seed.motivo }}</p>
+        {% if not seed.habilitada %}
+          <p class="aviso">Seed desabilitada.</p>
+        {% endif %}
+        {% if seed.recolhas %}
+          <h4>Última recolha</h4>
+          {{ mostrar_recolha(seed.recolhas[0]) }}
+          {% if seed.recolhas|length > 1 %}
+            <h4>Histórico</h4>
+            {% for recolha in seed.recolhas[1:] %}
+              <details>
+                <summary>Recolha #{{ recolha.id }} — {{ recolha.estado }} — {{ recolha.iniciada_em.strftime("%d/%m/%Y %H:%M") }}</summary>
+                {{ mostrar_recolha(recolha) }}
+              </details>
+            {% endfor %}
+          {% endif %}
+        {% elif seed.modo == "passivo" %}
+          <p class="aviso">Seed passiva: a recolha DNS é recusada.</p>
+        {% else %}
+          <p>Ainda não há recolhas para esta seed.</p>
+        {% endif %}
+      </section>
+    {% endfor %}
+  {% endif %}
 {% endblock %}

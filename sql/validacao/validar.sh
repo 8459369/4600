@@ -50,5 +50,9 @@ DATABASE_URL="postgresql://postgres:validacao@127.0.0.1:${porta}/observatorio" \
     SECRET_KEY=validacao \
     PYTHONPATH="$raiz" \
     python "$raiz/sql/validacao/testar_coletor_dns.py"
+DATABASE_URL="postgresql://postgres:validacao@127.0.0.1:${porta}/observatorio" \
+    SECRET_KEY=validacao \
+    PYTHONPATH="$raiz" \
+    python "$raiz/sql/validacao/testar_painel.py"
 
 echo "Validação do modelo concluída no PostgreSQL 17."

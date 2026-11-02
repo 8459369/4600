@@ -17,7 +17,13 @@ from observatorio.consulta_dns import (
     criar_resolvedor,
 )
 from observatorio.dominios import normalizar_dominio
-from observatorio.modelos import Dominio, Organizacao, Recolha
+from observatorio.modelos import (
+    Dominio,
+    Organizacao,
+    Recolha,
+    RecolhaFicha,
+    SeedFicha,
+)
 
 # Código guardado na base de dados -> nome mostrado ao utilizador.
 SETORES: Final = {"publico": "Público", "privado": "Privado", "social": "Social"}
@@ -100,6 +106,46 @@ def obter_ficha(organizacao_id: int) -> tuple[Organizacao, list[Dominio]] | None
         if organizacao is None:
             return None
         return organizacao, dados.listar_dominios(ligacao, organizacao_id)
+
+
+def obter_ficha_com_recolhas(
+    organizacao_id: int,
+) -> tuple[Organizacao, list[Dominio], list[SeedFicha]] | None:
+    with dados.ligar() as ligacao:
+        organizacao = dados.obter_organizacao(ligacao, organizacao_id)
+        if organizacao is None:
+            return None
+        seeds = []
+        for seed in dados.listar_seeds_organizacao(ligacao, organizacao_id):
+            recolhas = []
+            for recolha in dados.listar_recolhas_seed(ligacao, seed.id):
+                recolhas.append(
+                    RecolhaFicha(
+                        id=recolha.id,
+                        seed_id=recolha.seed_id,
+                        coletor=recolha.coletor,
+                        modo=recolha.modo,
+                        estado=recolha.estado,
+                        iniciada_em=recolha.iniciada_em,
+                        terminada_em=recolha.terminada_em,
+                        erro=recolha.erro,
+                        observacoes=dados.listar_observacoes_ficha(
+                            ligacao, recolha.id
+                        ),
+                        ligacoes=dados.listar_ligacoes_ficha(ligacao, recolha.id),
+                    )
+                )
+            seeds.append(
+                SeedFicha(
+                    id=seed.id,
+                    dominio=seed.dominio,
+                    modo=seed.modo,
+                    motivo=seed.motivo,
+                    habilitada=seed.habilitada,
+                    recolhas=recolhas,
+                )
+            )
+        return organizacao, dados.listar_dominios(ligacao, organizacao_id), seeds
 
 
 def recolher_dns(
