@@ -1,5 +1,5 @@
 -- Observatório de Cibersegurança de Amarante — modelo de dados (PostgreSQL 17).
--- 5 tabelas: organizações e os domínios que lhes servem de ponto de partida.
+-- 9 tabelas: inventário, seeds, recolhas e evidência DNS.
 -- Este script cria uma base vazia; não é uma migração de dados existentes.
 
 CREATE TABLE tipo_organizacao (
@@ -45,3 +45,96 @@ CREATE TABLE seed_descoberta (
     criada_em TIMESTAMPTZ NOT NULL DEFAULT now(),
     UNIQUE (organizacao_id, dominio_id)
 );
+
+-- Um ativo é uma identidade observável. O nome DNS reutiliza o domínio
+-- canónico já existente; um endereço IP é guardado uma só vez, mesmo que
+-- várias organizações ou recolhas o encontrem.
+CREATE TABLE ativo (
+    id SERIAL PRIMARY KEY,
+    tipo VARCHAR(16) NOT NULL CHECK (tipo IN ('nome_dns', 'endereco_ip')),
+    dominio_id INTEGER REFERENCES dominio (id) ON DELETE RESTRICT,
+    endereco_ip INET,
+    criado_em TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CHECK (
+        (tipo = 'nome_dns' AND dominio_id IS NOT NULL AND endereco_ip IS NULL)
+        OR (tipo = 'endereco_ip' AND dominio_id IS NULL AND endereco_ip IS NOT NULL)
+    ),
+    CHECK (
+        endereco_ip IS NULL
+        OR (family(endereco_ip) = 4 AND masklen(endereco_ip) = 32)
+        OR (family(endereco_ip) = 6 AND masklen(endereco_ip) = 128)
+    ),
+    UNIQUE (tipo, dominio_id),
+    UNIQUE (tipo, endereco_ip)
+);
+
+-- Cada execução é uma nova linha. Assim, uma falha posterior não apaga a
+-- última evidência válida nem altera o histórico.
+CREATE TABLE recolha (
+    id SERIAL PRIMARY KEY,
+    seed_id INTEGER NOT NULL REFERENCES seed_descoberta (id) ON DELETE RESTRICT,
+    coletor VARCHAR(80) NOT NULL CHECK (btrim(coletor) <> ''),
+    modo VARCHAR(12) NOT NULL CHECK (modo IN ('passivo', 'observacao')),
+    estado VARCHAR(12) NOT NULL DEFAULT 'em_curso'
+        CHECK (estado IN ('em_curso', 'concluida', 'parcial', 'falhada')),
+    iniciada_em TIMESTAMPTZ NOT NULL DEFAULT now(),
+    terminada_em TIMESTAMPTZ,
+    erro TEXT,
+    CHECK (erro IS NULL OR btrim(erro) <> ''),
+    CHECK (
+        (estado = 'em_curso' AND terminada_em IS NULL)
+        OR (estado <> 'em_curso' AND terminada_em IS NOT NULL)
+    ),
+    CHECK (terminada_em IS NULL OR terminada_em >= iniciada_em),
+    CHECK (estado <> 'falhada' OR erro IS NOT NULL)
+);
+
+CREATE INDEX idx_recolha_seed_data
+    ON recolha (seed_id, iniciada_em DESC);
+
+-- A referência é estável dentro da fonte (por exemplo, o nome consultado e
+-- o tipo DNS). A unicidade impede que a mesma evidência seja escrita duas
+-- vezes na mesma recolha, mas permite que apareça em recolhas posteriores.
+CREATE TABLE observacao (
+    id SERIAL PRIMARY KEY,
+    recolha_id INTEGER NOT NULL REFERENCES recolha (id) ON DELETE RESTRICT,
+    ativo_id INTEGER NOT NULL REFERENCES ativo (id) ON DELETE RESTRICT,
+    fonte VARCHAR(80) NOT NULL CHECK (btrim(fonte) <> ''),
+    referencia VARCHAR(255) NOT NULL CHECK (btrim(referencia) <> ''),
+    dados JSONB NOT NULL DEFAULT '{}'::jsonb,
+    sucesso BOOLEAN NOT NULL,
+    erro TEXT,
+    observada_em TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CHECK (erro IS NULL OR btrim(erro) <> ''),
+    CHECK (
+        (sucesso AND erro IS NULL)
+        OR (NOT sucesso AND erro IS NOT NULL)
+    ),
+    UNIQUE (recolha_id, fonte, referencia)
+);
+
+CREATE INDEX idx_observacao_recolha
+    ON observacao (recolha_id, observada_em, id);
+
+CREATE INDEX idx_observacao_ativo
+    ON observacao (ativo_id, observada_em DESC);
+
+-- As relações são observadas, não inferidas. Podem repetir-se em recolhas
+-- diferentes, mas não duas vezes na mesma observação.
+CREATE TABLE ligacao (
+    id SERIAL PRIMARY KEY,
+    observacao_id INTEGER NOT NULL REFERENCES observacao (id) ON DELETE RESTRICT,
+    tipo VARCHAR(16) NOT NULL CHECK (
+        tipo IN ('aponta_para', 'alias_de', 'servidor_email')
+    ),
+    origem_ativo_id INTEGER NOT NULL REFERENCES ativo (id) ON DELETE RESTRICT,
+    destino_ativo_id INTEGER NOT NULL REFERENCES ativo (id) ON DELETE RESTRICT,
+    CHECK (origem_ativo_id <> destino_ativo_id),
+    UNIQUE (observacao_id, tipo, origem_ativo_id, destino_ativo_id)
+);
+
+CREATE INDEX idx_ligacao_origem
+    ON ligacao (origem_ativo_id, id);
+
+CREATE INDEX idx_ligacao_destino
+    ON ligacao (destino_ativo_id, id);

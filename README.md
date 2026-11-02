@@ -19,11 +19,12 @@ Repositório: https://github.com/8459369/4600
 | `observatorio/rotas.py` | Rotas e respostas (camada de interface) |
 | `observatorio/servicos.py` | Validação e transações |
 | `observatorio/dados.py` | Acesso à base de dados (todo o SQL da aplicação) |
-| `observatorio/modelos.py` | `Organizacao` e `Dominio` |
+| `observatorio/modelos.py` | Organizações, seeds, recolhas e evidência |
 | `observatorio/dominios.py` | Normalização de nomes de domínio |
 | `observatorio/templates/` | Páginas HTML (Jinja) |
-| `sql/criar_base_dados.sql` | Modelo de dados (5 tabelas), para uma base vazia |
+| `sql/criar_base_dados.sql` | Modelo de dados (9 tabelas), para uma base vazia |
 | `sql/dados_iniciais.sql` | Dados de exemplo: tipos de organização e as 26 freguesias de Amarante (DICOFRE) |
+| `sql/validacao/validar.sh` | Validação do modelo e do acesso SQL num PostgreSQL 17 temporário |
 
 
 ## Configuração
@@ -58,6 +59,15 @@ podman exec -i observatorio-db psql -v ON_ERROR_STOP=1 -U postgres -d observator
 Com `DATABASE_URL=postgresql://postgres:teste@localhost:5432/observatorio`.
 
 Num servidor existente, aplica os mesmos dois ficheiros por esta ordem com `psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f <ficheiro>`. `criar_base_dados.sql` só serve para uma base vazia e não migra dados existentes.
+
+Para validar o modelo sem tocar numa base existente:
+
+```sh
+./sql/validacao/validar.sh
+```
+
+O script usa a imagem local `postgres:17`, cria uma base temporária, testa
+recolhas, observações, ativos e ligações, e remove o contentor no fim.
 
 ## Executa a aplicação
 
