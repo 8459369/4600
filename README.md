@@ -31,9 +31,9 @@ Repositório: https://github.com/8459369/4600
 | Variável | Obrigatória | Descrição |
 | --- | --- | --- |
 | `DATABASE_URL` | sim | URL de ligação ao PostgreSQL, por exemplo `postgresql://utilizador:palavra_passe@localhost:5432/observatorio` |
-| `SECRET_KEY` | sim | Chave que assina as mensagens da sessão. Gerar com `python -c "import secrets; print(secrets.token_hex(32))"` |
+| `SECRET_KEY` | sim | Chave que assina as mensagens da sessão. Gera-a com `python -c "import secrets; print(secrets.token_hex(32))"` |
 
-Copiar `.env.example` para `.env`. O ficheiro está no `.gitignore`. O Flask carrega-o através do `python-dotenv`. Sem `DATABASE_URL` ou sem `SECRET_KEY` a aplicação não arranca e termina com `RuntimeError`.
+Copia `.env.example` para `.env`. O ficheiro está no `.gitignore`. O Flask carrega-o através do `python-dotenv`. Sem `DATABASE_URL` ou sem `SECRET_KEY` a aplicação não arranca e termina com `RuntimeError`.
 
 ## Instalação
 
@@ -57,9 +57,9 @@ podman exec -i observatorio-db psql -v ON_ERROR_STOP=1 -U postgres -d observator
 
 Com `DATABASE_URL=postgresql://postgres:teste@localhost:5432/observatorio`.
 
-Num servidor existente, aplicar os mesmos dois ficheiros por esta ordem com `psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f <ficheiro>`. `criar_base_dados.sql` só serve para uma base vazia e não migra dados existentes.
+Num servidor existente, aplica os mesmos dois ficheiros por esta ordem com `psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f <ficheiro>`. `criar_base_dados.sql` só serve para uma base vazia e não migra dados existentes.
 
-## Executar
+## Executa a aplicação
 
 ```sh
 .venv/bin/python -m flask --app observatorio run
@@ -70,8 +70,8 @@ Serve em `http://127.0.0.1:5000`. É o servidor de desenvolvimento do Flask, nã
 | Método e caminho | Função |
 | --- | --- |
 | `GET /` | Lista de organizações |
-| `GET`, `POST /organizacoes/nova` | Registar uma organização |
+| `GET`, `POST /organizacoes/nova` | Regista uma organização |
 | `GET /organizacoes/<id>` | Ficha e domínios da organização |
-| `POST /organizacoes/<id>/dominios` | Associar um domínio |
+| `POST /organizacoes/<id>/dominios` | Associa um domínio |
 
 Não há autenticação nem proteção CSRF: a aplicação serve só uma máquina de confiança.

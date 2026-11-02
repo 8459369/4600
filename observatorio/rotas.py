@@ -42,7 +42,12 @@ def ficha(organizacao_id: int) -> str:
     if resultado is None:
         abort(404)
     organizacao, dominios = resultado
-    return render_template("ficha.html", organizacao=organizacao, dominios=dominios)
+    return render_template(
+        "ficha.html",
+        organizacao=organizacao,
+        dominios=dominios,
+        setores=servicos.SETORES,
+    )
 
 
 def associar(organizacao_id: int) -> Response:
@@ -51,7 +56,10 @@ def associar(organizacao_id: int) -> Response:
     except ErroValidacao as e:
         flash(str(e), "erro")
     else:
-        flash("Domínio associado." if associacao_nova else "O domínio já estava associado.", "info")
+        flash(
+            "Associaste o domínio." if associacao_nova else "O domínio já está associado.",
+            "info",
+        )
     return redirect(url_for("ficha", organizacao_id=organizacao_id))
 
 

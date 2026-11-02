@@ -12,7 +12,7 @@
     </label>
     <label>Tipo
       <select name="tipo" required>
-        <option value="">Escolher…</option>
+        <option value="">Escolhe…</option>
         {% for id, nome in tipos %}
           <option value="{{ id }}" {{ 'selected' if campos.get('tipo') == id|string }}>{{ nome }}</option>
         {% endfor %}
@@ -20,7 +20,7 @@
     </label>
     <label>Setor
       <select name="setor" required>
-        <option value="">Escolher…</option>
+        <option value="">Escolhe…</option>
         {% for codigo, nome in setores.items() %}
           <option value="{{ codigo }}" {{ 'selected' if campos.get('setor') == codigo }}>{{ nome }}</option>
         {% endfor %}
@@ -34,6 +34,6 @@
         {% endfor %}
       </select>
     </label>
-    <p><button type="submit">Registar</button></p>
+    <p><button type="submit">Regista</button></p>
   </form>
 {% endblock %}

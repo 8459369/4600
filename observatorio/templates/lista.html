@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block conteudo %}
   <h1>Organizações</h1>
-  <p><a href="{{ url_for('nova') }}">Registar organização</a></p>
+  <p><a href="{{ url_for('nova') }}">Regista uma organização</a></p>
   {% if not organizacoes %}
     <p>Ainda não há organizações registadas.</p>
   {% else %}
@@ -12,7 +12,7 @@
           <tr>
             <td><a href="{{ url_for('ficha', organizacao_id=o.id) }}">{{ o.nome }}</a></td>
             <td>{{ o.tipo }}</td>
-            <td>{{ o.freguesia or "" }}</td>
+            <td>{{ o.freguesia or "—" }}</td>
           </tr>
         {% endfor %}
       </tbody>

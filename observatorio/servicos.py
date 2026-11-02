@@ -29,24 +29,26 @@ def registar_organizacao(
 ) -> int:
     nome = nome.strip()
     if not nome:
-        raise ErroValidacao("Nome é obrigatório.")
+        raise ErroValidacao("Indica o nome da organização.")
     if len(nome) > TAMANHO_NOME:
-        raise ErroValidacao(f"Nome tem de ter no máximo {TAMANHO_NOME} caracteres.")
+        raise ErroValidacao(
+            f"Indica um nome com no máximo {TAMANHO_NOME} caracteres."
+        )
     if tipo_id is None:
-        raise ErroValidacao("Escolha o tipo de organização.")
+        raise ErroValidacao("Escolhe o tipo de organização.")
     if setor not in SETORES:
-        raise ErroValidacao("Escolha o setor.")
+        raise ErroValidacao("Escolhe o setor.")
     nif = nif.strip()
     if nif and not (nif.isascii() and nif.isdigit() and len(nif) == 9):
-        raise ErroValidacao("O NIF tem de ter exatamente 9 dígitos.")
+        raise ErroValidacao("Indica um NIF com exatamente 9 dígitos.")
 
     with dados.ligar() as ligacao:
         if tipo_id not in {id for id, _ in dados.listar_tipos(ligacao)}:
-            raise ErroValidacao("O tipo de organização escolhido não existe.")
+            raise ErroValidacao("O tipo de organização que escolheste não existe.")
         if freguesia_id is not None and freguesia_id not in {
             id for id, _ in dados.listar_freguesias(ligacao)
         }:
-            raise ErroValidacao("A freguesia escolhida não existe.")
+            raise ErroValidacao("A freguesia que escolheste não existe.")
         try:
             return dados.criar_organizacao(
                 ligacao, nome, nif or None, tipo_id, setor, freguesia_id
@@ -60,8 +62,8 @@ def associar_dominio(organizacao_id: int, texto: str) -> bool:
     nome = normalizar_dominio(texto)
     if nome is None:
         raise ErroValidacao(
-            "Indique só o nome do domínio, como 'exemplo.pt' , "
-            "sem 'http://' ou 'www.' ou barras."
+            "Indica apenas o nome do domínio, por exemplo 'exemplo.pt'. "
+            "Não incluas 'http://', 'https://', caminhos ou parâmetros."
         )
     with dados.ligar() as ligacao:
         if dados.obter_organizacao(ligacao, organizacao_id) is None:

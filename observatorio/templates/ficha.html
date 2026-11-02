@@ -5,7 +5,7 @@
   <dl>
     <dt>NIF</dt><dd>{{ organizacao.nif or "—" }}</dd>
     <dt>Tipo</dt><dd>{{ organizacao.tipo }}</dd>
-    <dt>Setor</dt><dd>{{ organizacao.setor }}</dd>
+    <dt>Setor</dt><dd>{{ setores.get(organizacao.setor, organizacao.setor) }}</dd>
     <dt>Freguesia</dt><dd>{{ organizacao.freguesia or "—" }}</dd>
   </dl>
   <h2>Domínios associados</h2>
@@ -20,6 +20,6 @@
     <label>Domínio
       <input name="dominio" placeholder="amarante.pt" required>
     </label>
-    <p><button type="submit">Associar</button></p>
+    <p><button type="submit">Associa</button></p>
   </form>
 {% endblock %}
