@@ -96,6 +96,33 @@
         {% else %}
           <p>Ainda não há recolhas para esta seed.</p>
         {% endif %}
+        {% if seed.alteracoes %}
+          <h4>Alterações observadas</h4>
+          <table>
+            <thead>
+              <tr>
+                <th>Referência</th>
+                <th>Categoria</th>
+                <th>Tipo</th>
+                <th>Anterior</th>
+                <th>Atual</th>
+                <th>Dados</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for alteracao in seed.alteracoes %}
+                <tr>
+                  <td>{{ alteracao.referencia }}</td>
+                  <td>{{ alteracao.categoria }}</td>
+                  <td>{{ alteracao.tipo }}</td>
+                  <td>Recolha #{{ alteracao.recolha_anterior_id }}<br>{{ alteracao.anterior_observada_em.strftime("%d/%m/%Y %H:%M") }}</td>
+                  <td>Recolha #{{ alteracao.recolha_atual_id }}<br>{{ alteracao.atual_observada_em.strftime("%d/%m/%Y %H:%M") }}</td>
+                  <td><pre>{{ alteracao.dados | tojson(indent=2) }}</pre></td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        {% endif %}
       </section>
     {% endfor %}
   {% endif %}

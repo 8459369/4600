@@ -8,6 +8,7 @@ from psycopg.rows import class_row
 from psycopg.types.json import Jsonb
 
 from observatorio.modelos import (
+    AlteracaoFicha,
     Ativo,
     Dominio,
     Ligacao,
@@ -304,6 +305,38 @@ def criar_ligacao(
     return _id_gerado(cursor)
 
 
+def criar_alteracao(
+    ligacao: psycopg.Connection,
+    observacao_anterior_id: int,
+    observacao_atual_id: int,
+    categoria: str,
+    tipo: str,
+    chave: str,
+    dados: Any,
+) -> None:
+    ligacao.execute(
+        """
+        INSERT INTO alteracao_ativo (
+            observacao_anterior_id, observacao_atual_id,
+            categoria, tipo, chave, dados
+        )
+        VALUES (%s, %s, %s, %s, %s, %s)
+        ON CONFLICT (
+            observacao_anterior_id, observacao_atual_id,
+            categoria, tipo, chave
+        ) DO NOTHING
+        """,
+        (
+            observacao_anterior_id,
+            observacao_atual_id,
+            categoria,
+            tipo,
+            chave,
+            Jsonb(dados),
+        ),
+    )
+
+
 def obter_recolha(ligacao: psycopg.Connection, recolha_id: int) -> Recolha | None:
     with ligacao.cursor(row_factory=class_row(Recolha)) as cursor:
         cursor.execute(
@@ -314,6 +347,36 @@ def obter_recolha(ligacao: psycopg.Connection, recolha_id: int) -> Recolha | Non
             WHERE id = %s
             """,
             (recolha_id,),
+        )
+        return cursor.fetchone()
+
+
+def obter_observacao_anterior_sucesso(
+    ligacao: psycopg.Connection,
+    seed_id: int,
+    observacao_id: int,
+) -> Observacao | None:
+    with ligacao.cursor(row_factory=class_row(Observacao)) as cursor:
+        cursor.execute(
+            """
+            SELECT anterior.id, anterior.recolha_id, anterior.ativo_id,
+                   anterior.fonte, anterior.referencia, anterior.dados,
+                   anterior.sucesso, anterior.erro, anterior.observada_em
+            FROM observacao anterior
+            JOIN recolha recolha_anterior
+              ON recolha_anterior.id = anterior.recolha_id
+            JOIN observacao atual ON atual.id = %s
+            WHERE recolha_anterior.seed_id = %s
+              AND anterior.ativo_id = atual.ativo_id
+              AND anterior.fonte = atual.fonte
+              AND anterior.referencia = atual.referencia
+              AND anterior.sucesso
+              AND (anterior.observada_em, anterior.id)
+                  < (atual.observada_em, atual.id)
+            ORDER BY anterior.observada_em DESC, anterior.id DESC
+            LIMIT 1
+            """,
+            (observacao_id, seed_id),
         )
         return cursor.fetchone()
 
@@ -417,5 +480,61 @@ def listar_ligacoes_ficha(
             ORDER BY ligacao.id
             """,
             (recolha_id,),
+        )
+        return cursor.fetchall()
+
+
+def listar_ligacoes_ficha_observacao(
+    ligacao: psycopg.Connection, observacao_id: int
+) -> list[LigacaoFicha]:
+    with ligacao.cursor(row_factory=class_row(LigacaoFicha)) as cursor:
+        cursor.execute(
+            """
+            WITH ativos AS (
+                SELECT ativo.id,
+                       CASE ativo.tipo
+                           WHEN 'nome_dns' THEN dominio.nome
+                           ELSE ativo.endereco_ip::text
+                       END AS nome
+                FROM ativo
+                LEFT JOIN dominio ON dominio.id = ativo.dominio_id
+            )
+            SELECT ligacao.id, ligacao.observacao_id, ligacao.tipo,
+                   origem.nome AS origem, destino.nome AS destino
+            FROM ligacao
+            JOIN observacao ON observacao.id = ligacao.observacao_id
+            JOIN ativos origem ON origem.id = ligacao.origem_ativo_id
+            JOIN ativos destino ON destino.id = ligacao.destino_ativo_id
+            WHERE ligacao.observacao_id = %s
+            ORDER BY ligacao.id
+            """,
+            (observacao_id,),
+        )
+        return cursor.fetchall()
+
+
+def listar_alteracoes_ficha_seed(
+    ligacao: psycopg.Connection, seed_id: int
+) -> list[AlteracaoFicha]:
+    with ligacao.cursor(row_factory=class_row(AlteracaoFicha)) as cursor:
+        cursor.execute(
+            """
+            SELECT alteracao.id, atual.referencia,
+                   alteracao.categoria, alteracao.tipo, alteracao.dados,
+                   anterior.recolha_id AS recolha_anterior_id,
+                   atual.recolha_id AS recolha_atual_id,
+                   anterior.observada_em AS anterior_observada_em,
+                   atual.observada_em AS atual_observada_em
+            FROM alteracao_ativo alteracao
+            JOIN observacao anterior
+              ON anterior.id = alteracao.observacao_anterior_id
+            JOIN observacao atual
+              ON atual.id = alteracao.observacao_atual_id
+            JOIN recolha recolha_atual
+              ON recolha_atual.id = atual.recolha_id
+            WHERE recolha_atual.seed_id = %s
+            ORDER BY atual.observada_em DESC, alteracao.id DESC
+            """,
+            (seed_id,),
         )
         return cursor.fetchall()

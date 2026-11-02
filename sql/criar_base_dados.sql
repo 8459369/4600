@@ -1,5 +1,5 @@
 -- Observatório de Cibersegurança de Amarante — modelo de dados (PostgreSQL 17).
--- 9 tabelas: inventário, seeds, recolhas e evidência DNS.
+-- 10 tabelas: inventário, seeds, recolhas, evidência DNS e alterações.
 -- Este script cria uma base vazia; não é uma migração de dados existentes.
 
 CREATE TABLE tipo_organizacao (
@@ -138,3 +138,28 @@ CREATE INDEX idx_ligacao_origem
 
 CREATE INDEX idx_ligacao_destino
     ON ligacao (destino_ativo_id, id);
+
+-- Uma alteração compara duas observações bem-sucedidas do mesmo ativo.
+-- A aplicação valida a compatibilidade entre as observações e só grava
+-- diferenças que tenham evidência anterior e atual.
+CREATE TABLE alteracao_ativo (
+    id SERIAL PRIMARY KEY,
+    observacao_anterior_id INTEGER NOT NULL REFERENCES observacao (id) ON DELETE RESTRICT,
+    observacao_atual_id INTEGER NOT NULL REFERENCES observacao (id) ON DELETE RESTRICT,
+    categoria VARCHAR(12) NOT NULL CHECK (categoria IN ('registo', 'ligacao')),
+    tipo VARCHAR(12) NOT NULL CHECK (tipo IN ('adicionada', 'removida')),
+    chave TEXT NOT NULL CHECK (btrim(chave) <> ''),
+    dados JSONB NOT NULL DEFAULT '{}'::jsonb,
+    criada_em TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CHECK (observacao_anterior_id <> observacao_atual_id),
+    UNIQUE (
+        observacao_anterior_id, observacao_atual_id,
+        categoria, tipo, chave
+    )
+);
+
+CREATE INDEX idx_alteracao_atual
+    ON alteracao_ativo (observacao_atual_id, criada_em DESC);
+
+CREATE INDEX idx_alteracao_anterior
+    ON alteracao_ativo (observacao_anterior_id, criada_em DESC);

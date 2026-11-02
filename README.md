@@ -19,12 +19,12 @@ Repositório: https://github.com/8459369/4600
 | `observatorio/rotas.py` | Rotas e respostas (camada de interface) |
 | `observatorio/servicos.py` | Validação e transações |
 | `observatorio/dados.py` | Acesso à base de dados (todo o SQL da aplicação) |
-| `observatorio/modelos.py` | Organizações, seeds, recolhas e evidência |
+| `observatorio/modelos.py` | Organizações, seeds, recolhas, evidência e alterações |
 | `observatorio/dominios.py` | Normalização de nomes de domínio |
 | `observatorio/consulta_dns.py` | Consulta e normalização dos seis tipos DNS da primeira recolha |
 | `observatorio/recolher.py` | Comando manual de recolha por `seed_id` |
 | `observatorio/templates/` | Páginas HTML (Jinja) |
-| `sql/criar_base_dados.sql` | Modelo de dados (9 tabelas), para uma base vazia |
+| `sql/criar_base_dados.sql` | Modelo de dados (10 tabelas), para uma base vazia |
 | `sql/dados_iniciais.sql` | Dados de exemplo: tipos de organização e as 26 freguesias de Amarante (DICOFRE) |
 | `sql/validacao/validar.sh` | Validação do modelo e do acesso SQL num PostgreSQL 17 temporário |
 
@@ -69,7 +69,7 @@ Para validar o modelo sem tocar numa base existente:
 ```
 
 O script usa a imagem local `postgres:17`, cria uma base temporária, testa
-recolhas, observações, ativos e ligações, e remove o contentor no fim.
+recolhas, observações, ativos, ligações e alterações, e remove o contentor no fim.
 
 ## Recolha DNS manual
 
@@ -82,7 +82,8 @@ Uma seed em modo `observacao` pode ser recolhida pela linha de comandos:
 O comando consulta apenas A, AAAA, MX, NS, CNAME e TXT. O timeout pode ser
 ajustado com `--timeout` e o resolvedor pode ser indicado com um ou mais
 `--nameserver`. Seeds em modo `passivo` são recusadas antes de qualquer pedido
-DNS.
+DNS. Recolhas sucessivas conservam as observações e registam alterações de
+registos ou ligações na ficha da organização.
 
 ## Executa a aplicação
 

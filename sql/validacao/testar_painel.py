@@ -40,6 +40,10 @@ def principal() -> None:
             "192.0.2.10",
             "mail.4600.test",
             "v=spf1 -all",
+            "Alterações observadas",
+            "adicionada",
+            "removida",
+            "192.0.2.11",
         ):
             assert texto in pagina, texto
 
