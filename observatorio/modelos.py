@@ -96,6 +96,19 @@ class LigacaoFicha:
 
 
 @dataclass
+class AlteracaoFicha:
+    id: int
+    referencia: str
+    categoria: str
+    tipo: str
+    dados: Any
+    recolha_anterior_id: int
+    recolha_atual_id: int
+    anterior_observada_em: datetime
+    atual_observada_em: datetime
+
+
+@dataclass
 class RecolhaFicha:
     id: int
     seed_id: int
@@ -117,3 +130,4 @@ class SeedFicha:
     motivo: str
     habilitada: bool
     recolhas: list[RecolhaFicha]
+    alteracoes: list[AlteracaoFicha]

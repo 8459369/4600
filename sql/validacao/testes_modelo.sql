@@ -74,6 +74,16 @@ INSERT INTO observacao (
 VALUES (
     :segunda_recolha_id, :ativo_dns_id, 'dns', 'validacao.4600.pt/A',
     '{"registos":["192.0.2.10"]}'::jsonb, true
+)
+RETURNING id AS segunda_observacao_id \gset
+
+INSERT INTO alteracao_ativo (
+    observacao_anterior_id, observacao_atual_id,
+    categoria, tipo, chave, dados
+)
+VALUES (
+    :observacao_id, :segunda_observacao_id,
+    'registo', 'adicionada', 'teste', '{"registo":"novo"}'::jsonb
 );
 
 INSERT INTO ativo (tipo, endereco_ip)
@@ -106,6 +116,9 @@ BEGIN
     END IF;
     IF (SELECT count(*) FROM ligacao WHERE observacao_id = id_observacao) <> 1 THEN
         RAISE EXCEPTION 'A ligação DNS não foi conservada';
+    END IF;
+    IF (SELECT count(*) FROM alteracao_ativo) <> 1 THEN
+        RAISE EXCEPTION 'A alteração entre observações não foi conservada';
     END IF;
 END
 $$;
@@ -204,6 +217,20 @@ BEGIN
         VALUES (id_observacao, 'aponta_para', id_ativo_dns, id_ativo_ip);
         RAISE EXCEPTION 'Foi aceite uma ligação duplicada';
     EXCEPTION WHEN unique_violation THEN
+        NULL;
+    END;
+
+    BEGIN
+        INSERT INTO alteracao_ativo (
+            observacao_anterior_id, observacao_atual_id,
+            categoria, tipo, chave, dados
+        )
+        VALUES (
+            id_observacao, id_observacao,
+            'registo', 'adicionada', 'invalida', '{}'
+        );
+        RAISE EXCEPTION 'Foi aceite uma alteração da mesma observação';
+    EXCEPTION WHEN check_violation THEN
         NULL;
     END;
 END

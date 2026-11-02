@@ -1,6 +1,8 @@
 # Valida os dados, decide o que fazer e garante que as gravações acontecem
 # todas ou nenhuma. Não escreve SQL: chama a camada de dados. É aqui que se
 # abre a ligação, e cada "with ligar()" é uma transação.
+import json
+
 from collections.abc import Sequence
 from datetime import datetime, timezone
 from typing import Final
@@ -20,6 +22,7 @@ from observatorio.dominios import normalizar_dominio
 from observatorio.modelos import (
     Dominio,
     Organizacao,
+    Observacao,
     Recolha,
     RecolhaFicha,
     SeedFicha,
@@ -143,6 +146,9 @@ def obter_ficha_com_recolhas(
                     motivo=seed.motivo,
                     habilitada=seed.habilitada,
                     recolhas=recolhas,
+                    alteracoes=dados.listar_alteracoes_ficha_seed(
+                        ligacao, seed.id
+                    ),
                 )
             )
         return organizacao, dados.listar_dominios(ligacao, organizacao_id), seeds
@@ -197,6 +203,7 @@ def recolher_dns(
             dados.atualizar_recolha(
                 ligacao, recolha_id, estado, datetime.now(timezone.utc), erro
             )
+            _registar_alteracoes(ligacao, seed.id, recolha_id)
             recolha = dados.obter_recolha(ligacao, recolha_id)
             if recolha is None:
                 raise RuntimeError("A recolha desapareceu durante a gravação")
@@ -217,6 +224,117 @@ def _estado_recolha(resultados: Sequence[ResultadoDNS]) -> tuple[str, str | None
     if len(falhas) == len(TIPOS_REGISTO):
         return "falhada", "; ".join(falhas)
     return "parcial", "; ".join(falhas)
+
+
+def _registar_alteracoes(
+    ligacao: psycopg.Connection, seed_id: int, recolha_id: int
+) -> None:
+    for atual in dados.listar_observacoes_recolha(ligacao, recolha_id):
+        if not atual.sucesso:
+            continue
+        anterior = dados.obter_observacao_anterior_sucesso(
+            ligacao, seed_id, atual.id
+        )
+        if anterior is None:
+            continue
+        _comparar_registos(ligacao, anterior, atual)
+        _comparar_ligacoes(ligacao, anterior, atual)
+
+
+def _comparar_registos(
+    ligacao: psycopg.Connection,
+    anterior: Observacao,
+    atual: Observacao,
+) -> None:
+    anteriores = _registos(anterior)
+    atuais = _registos(atual)
+    _guardar_diferencas(
+        ligacao,
+        anterior,
+        atual,
+        "registo",
+        anteriores,
+        atuais,
+    )
+
+
+def _comparar_ligacoes(
+    ligacao: psycopg.Connection,
+    anterior: Observacao,
+    atual: Observacao,
+) -> None:
+    anteriores = _ligacoes(ligacao, anterior.id)
+    atuais = _ligacoes(ligacao, atual.id)
+    _guardar_diferencas(
+        ligacao,
+        anterior,
+        atual,
+        "ligacao",
+        anteriores,
+        atuais,
+    )
+
+
+def _guardar_diferencas(
+    ligacao: psycopg.Connection,
+    anterior: Observacao,
+    atual: Observacao,
+    categoria: str,
+    anteriores: dict[str, object],
+    atuais: dict[str, object],
+) -> None:
+    for chave in sorted(atuais.keys() - anteriores.keys()):
+        dados.criar_alteracao(
+            ligacao,
+            anterior.id,
+            atual.id,
+            categoria,
+            "adicionada",
+            chave,
+            atuais[chave],
+        )
+    for chave in sorted(anteriores.keys() - atuais.keys()):
+        dados.criar_alteracao(
+            ligacao,
+            anterior.id,
+            atual.id,
+            categoria,
+            "removida",
+            chave,
+            anteriores[chave],
+        )
+
+
+def _registos(observacao: Observacao) -> dict[str, object]:
+    if not isinstance(observacao.dados, dict):
+        return {}
+    registos = observacao.dados.get("registos", [])
+    if not isinstance(registos, list):
+        return {}
+    return {_chave_json(registo): registo for registo in registos}
+
+
+def _ligacoes(
+    ligacao: psycopg.Connection, observacao_id: int
+) -> dict[str, object]:
+    resultado = {}
+    for relacao in dados.listar_ligacoes_ficha_observacao(ligacao, observacao_id):
+        valor = {
+            "tipo": relacao.tipo,
+            "origem": relacao.origem,
+            "destino": relacao.destino,
+        }
+        resultado[_chave_json(valor)] = valor
+    return resultado
+
+
+def _chave_json(valor: object) -> str:
+    return json.dumps(
+        valor,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
 
 
 def _guardar_ligacoes(

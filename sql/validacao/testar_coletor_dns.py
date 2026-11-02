@@ -38,8 +38,13 @@ class Texto:
 
 
 class ResolvedorSimulado:
-    def __init__(self, falhas: set[str] | None = None) -> None:
+    def __init__(
+        self,
+        falhas: set[str] | None = None,
+        respostas: dict[str, list[object]] | None = None,
+    ) -> None:
         self.falhas = falhas or set()
+        self.respostas = respostas or _respostas_base()
         self.chamadas: list[tuple[str, str, float]] = []
 
     def resolve(
@@ -53,17 +58,34 @@ class ResolvedorSimulado:
         self.chamadas.append((nome, tipo, lifetime))
         if tipo in self.falhas:
             raise dns.exception.Timeout("timeout simulado")
-        return {
-            "A": [Endereco("192.0.2.10")],
-            "AAAA": [Endereco("2001:db8::10")],
-            "MX": [
-                MX(10, NomeDNS("mail.4600.test.")),
-                MX(20, NomeDNS(".")),
-            ],
-            "NS": [Alvo(NomeDNS("ns.4600.test."))],
-            "CNAME": [Alvo(NomeDNS("alias.4600.test."))],
-            "TXT": [Texto((b"v=spf1 -all",))],
-        }[tipo]
+        return self.respostas[tipo]
+
+
+def _respostas_base() -> dict[str, list[object]]:
+    return {
+        "A": [Endereco("192.0.2.10")],
+        "AAAA": [Endereco("2001:db8::10")],
+        "MX": [
+            MX(10, NomeDNS("mail.4600.test.")),
+            MX(20, NomeDNS(".")),
+        ],
+        "NS": [Alvo(NomeDNS("ns.4600.test."))],
+        "CNAME": [Alvo(NomeDNS("alias.4600.test."))],
+        "TXT": [Texto((b"v=spf1 -all",))],
+    }
+
+
+def _respostas_alteradas() -> dict[str, list[object]]:
+    respostas = _respostas_base()
+    respostas.update(
+        {
+            "A": [Endereco("192.0.2.11")],
+            "MX": [MX(10, NomeDNS("mail2.4600.test.")), MX(20, NomeDNS("."))],
+            "CNAME": [],
+            "TXT": [Texto((b"v=spf1 ~all",))],
+        }
+    )
+    return respostas
 
 
 def principal() -> None:
@@ -74,6 +96,7 @@ def principal() -> None:
         seed_id = _criar_seed("coleta.4600.test", "observacao")
         _testar_recolha_concluida(seed_id)
         _testar_repeticao_sem_duplicar(seed_id)
+        _testar_alteracoes(seed_id)
         _testar_falha_total_preserva_historico(seed_id)
 
         seed_parcial = _criar_seed("parcial.4600.test", "observacao")
@@ -155,6 +178,54 @@ def _testar_repeticao_sem_duplicar(seed_id: int) -> None:
               AND endereco_ip IN ('192.0.2.10', '2001:db8::10')
             """
         ).fetchone()[0] == 2
+    assert _contar_alteracoes(seed_id) == 0
+
+
+def _testar_alteracoes(seed_id: int) -> None:
+    recolha = servicos.recolher_dns(
+        seed_id,
+        timeout=0.5,
+        resolvedor=ResolvedorSimulado(respostas=_respostas_alteradas()),
+    )
+    assert recolha.estado == "concluida"
+
+    total = _contar_alteracoes(seed_id)
+    assert total > 0
+    assert _contar_alteracoes(seed_id, "alteracao.tipo = 'adicionada'") > 0
+    assert _contar_alteracoes(seed_id, "alteracao.tipo = 'removida'") > 0
+    assert _contar_alteracoes(seed_id, "alteracao.categoria = 'registo'") > 0
+    assert _contar_alteracoes(seed_id, "alteracao.categoria = 'ligacao'") > 0
+    with dados.ligar() as ligacao:
+        assert ligacao.execute(
+            "SELECT count(*) FROM alteracao_ativo alteracao "
+            "JOIN observacao atual ON atual.id = alteracao.observacao_atual_id "
+            "JOIN recolha ON recolha.id = atual.recolha_id "
+            "WHERE recolha.seed_id = %s GROUP BY "
+            "alteracao.observacao_anterior_id, alteracao.observacao_atual_id, "
+            "alteracao.categoria, alteracao.tipo, alteracao.chave "
+            "HAVING count(*) > 1",
+            (seed_id,),
+        ).fetchall() == []
+
+    total_anterior = total
+    respostas_parciais = _respostas_alteradas()
+    respostas_parciais["TXT"] = [Texto((b"v=spf1 ?all",))]
+    recolha_parcial = servicos.recolher_dns(
+        seed_id,
+        timeout=0.5,
+        resolvedor=ResolvedorSimulado(
+            {"TXT"}, respostas=respostas_parciais
+        ),
+    )
+    assert recolha_parcial.estado == "parcial"
+    assert _contar_alteracoes(seed_id) == total_anterior
+
+    servicos.recolher_dns(
+        seed_id,
+        timeout=0.5,
+        resolvedor=ResolvedorSimulado(respostas=_respostas_alteradas()),
+    )
+    assert _contar_alteracoes(seed_id) == total_anterior
 
 
 def _testar_recolha_parcial(seed_id: int) -> None:
@@ -174,6 +245,7 @@ def _testar_falha_total_preserva_historico(seed_id: int) -> None:
             "WHERE r.seed_id = %s AND o.sucesso",
             (seed_id,),
         ).fetchone()[0]
+    alteracoes_anteriores = _contar_alteracoes(seed_id)
 
     recolha = servicos.recolher_dns(
         seed_id,
@@ -188,6 +260,22 @@ def _testar_falha_total_preserva_historico(seed_id: int) -> None:
             "WHERE r.seed_id = %s AND o.sucesso",
             (seed_id,),
         ).fetchone()[0] == observacoes_anteriores
+    assert _contar_alteracoes(seed_id) == alteracoes_anteriores
+
+
+def _contar_alteracoes(seed_id: int, filtro: str | None = None) -> int:
+    consulta = """
+        SELECT count(*)
+        FROM alteracao_ativo alteracao
+        JOIN observacao atual ON atual.id = alteracao.observacao_atual_id
+        JOIN recolha ON recolha.id = atual.recolha_id
+        WHERE recolha.seed_id = %s
+    """
+    parametros: tuple[object, ...] = (seed_id,)
+    if filtro:
+        consulta += f" AND {filtro}"
+    with dados.ligar() as ligacao:
+        return ligacao.execute(consulta, parametros).fetchone()[0]
 
 
 def _testar_seed_passiva(seed_id: int) -> None:
