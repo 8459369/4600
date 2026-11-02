@@ -21,6 +21,8 @@ Repositório: https://github.com/8459369/4600
 | `observatorio/dados.py` | Acesso à base de dados (todo o SQL da aplicação) |
 | `observatorio/modelos.py` | Organizações, seeds, recolhas e evidência |
 | `observatorio/dominios.py` | Normalização de nomes de domínio |
+| `observatorio/consulta_dns.py` | Consulta e normalização dos seis tipos DNS da primeira recolha |
+| `observatorio/recolher.py` | Comando manual de recolha por `seed_id` |
 | `observatorio/templates/` | Páginas HTML (Jinja) |
 | `sql/criar_base_dados.sql` | Modelo de dados (9 tabelas), para uma base vazia |
 | `sql/dados_iniciais.sql` | Dados de exemplo: tipos de organização e as 26 freguesias de Amarante (DICOFRE) |
@@ -68,6 +70,19 @@ Para validar o modelo sem tocar numa base existente:
 
 O script usa a imagem local `postgres:17`, cria uma base temporária, testa
 recolhas, observações, ativos e ligações, e remove o contentor no fim.
+
+## Recolha DNS manual
+
+Uma seed em modo `observacao` pode ser recolhida pela linha de comandos:
+
+```sh
+.venv/bin/python -m observatorio.recolher --seed-id 1
+```
+
+O comando consulta apenas A, AAAA, MX, NS, CNAME e TXT. O timeout pode ser
+ajustado com `--timeout` e o resolvedor pode ser indicado com um ou mais
+`--nameserver`. Seeds em modo `passivo` são recusadas antes de qualquer pedido
+DNS.
 
 ## Executa a aplicação
 

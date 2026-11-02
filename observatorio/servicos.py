@@ -1,18 +1,29 @@
 # Valida os dados, decide o que fazer e garante que as gravações acontecem
 # todas ou nenhuma. Não escreve SQL: chama a camada de dados. É aqui que se
 # abre a ligação, e cada "with ligar()" é uma transação.
+from collections.abc import Sequence
+from datetime import datetime, timezone
 from typing import Final
 
 import psycopg
 
 from observatorio import dados
+from observatorio.consulta_dns import (
+    LigacaoDNS,
+    ResultadoDNS,
+    ResolvedorDNS,
+    TIPOS_REGISTO,
+    consultar_dominio,
+    criar_resolvedor,
+)
 from observatorio.dominios import normalizar_dominio
-from observatorio.modelos import Dominio, Organizacao
+from observatorio.modelos import Dominio, Organizacao, Recolha
 
 # Código guardado na base de dados -> nome mostrado ao utilizador.
 SETORES: Final = {"publico": "Público", "privado": "Privado", "social": "Social"}
 TAMANHO_NOME: Final = 200
 MOTIVO_SEED: Final = "Introduzido pelo operador"
+COLETOR_DNS: Final = "dns"
 
 
 class ErroValidacao(Exception):
@@ -89,3 +100,110 @@ def obter_ficha(organizacao_id: int) -> tuple[Organizacao, list[Dominio]] | None
         if organizacao is None:
             return None
         return organizacao, dados.listar_dominios(ligacao, organizacao_id)
+
+
+def recolher_dns(
+    seed_id: int,
+    timeout: float = 3.0,
+    nameservers: Sequence[str] | None = None,
+    resolvedor: ResolvedorDNS | None = None,
+) -> Recolha:
+    """Executa uma recolha DNS e conserva cada tipo numa observação própria."""
+    if timeout <= 0:
+        raise ErroValidacao("O timeout DNS tem de ser maior do que zero.")
+
+    with dados.ligar() as ligacao:
+        seed = dados.obter_seed(ligacao, seed_id)
+        if seed is None:
+            raise ErroValidacao("A seed não existe.")
+        if not seed.habilitada:
+            raise ErroValidacao("A seed está desabilitada.")
+        if seed.modo != "observacao":
+            raise ErroValidacao(
+                "A seed está em modo passivo; não foram feitos pedidos DNS."
+            )
+        recolha_id = dados.criar_recolha(
+            ligacao, seed.id, COLETOR_DNS, "observacao"
+        )
+
+    try:
+        if resolvedor is None:
+            resolvedor = criar_resolvedor(timeout, nameservers)
+        resultados = consultar_dominio(seed.dominio, resolvedor, timeout)
+        estado, erro = _estado_recolha(resultados)
+        with dados.ligar() as ligacao:
+            ativo_origem_id = dados.garantir_ativo_dns(ligacao, seed.dominio_id)
+            for resultado in resultados:
+                observacao_id = dados.criar_observacao(
+                    ligacao,
+                    recolha_id,
+                    ativo_origem_id,
+                    COLETOR_DNS,
+                    f"{seed.dominio}/{resultado.tipo}",
+                    resultado.dados,
+                    resultado.sucesso,
+                    resultado.erro,
+                )
+                if resultado.sucesso:
+                    _guardar_ligacoes(
+                        ligacao, observacao_id, ativo_origem_id, resultado.ligacoes
+                    )
+            dados.atualizar_recolha(
+                ligacao, recolha_id, estado, datetime.now(timezone.utc), erro
+            )
+            recolha = dados.obter_recolha(ligacao, recolha_id)
+            if recolha is None:
+                raise RuntimeError("A recolha desapareceu durante a gravação")
+            return recolha
+    except Exception as erro:
+        _marcar_recolha_falhada(recolha_id, erro)
+        raise
+
+
+def _estado_recolha(resultados: Sequence[ResultadoDNS]) -> tuple[str, str | None]:
+    falhas = [
+        f"{resultado.tipo}: {resultado.erro}"
+        for resultado in resultados
+        if not resultado.sucesso
+    ]
+    if not falhas:
+        return "concluida", None
+    if len(falhas) == len(TIPOS_REGISTO):
+        return "falhada", "; ".join(falhas)
+    return "parcial", "; ".join(falhas)
+
+
+def _guardar_ligacoes(
+    ligacao: psycopg.Connection,
+    observacao_id: int,
+    origem_ativo_id: int,
+    ligacoes: Sequence[LigacaoDNS],
+) -> None:
+    for relacao in ligacoes:
+        if relacao.tipo_destino == "ip":
+            destino_ativo_id = dados.garantir_ativo_ip(ligacao, relacao.destino)
+        else:
+            dominio_id = dados.garantir_dominio(ligacao, relacao.destino)
+            destino_ativo_id = dados.garantir_ativo_dns(ligacao, dominio_id)
+        dados.criar_ligacao(
+            ligacao,
+            observacao_id,
+            relacao.tipo,
+            origem_ativo_id,
+            destino_ativo_id,
+        )
+
+
+def _marcar_recolha_falhada(recolha_id: int, erro: Exception) -> None:
+    mensagem = str(erro).strip() or erro.__class__.__name__
+    try:
+        with dados.ligar() as ligacao:
+            dados.atualizar_recolha(
+                ligacao,
+                recolha_id,
+                "falhada",
+                datetime.now(timezone.utc),
+                mensagem,
+            )
+    except Exception as erro:
+        raise RuntimeError("Não foi possível registar a falha da recolha") from erro
