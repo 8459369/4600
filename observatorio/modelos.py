@@ -72,3 +72,48 @@ class Ligacao:
     tipo: str
     origem_ativo_id: int
     destino_ativo_id: int
+
+
+@dataclass
+class ObservacaoFicha:
+    id: int
+    fonte: str
+    referencia: str
+    ativo: str
+    dados: Any
+    sucesso: bool
+    erro: str | None
+    observada_em: datetime
+
+
+@dataclass
+class LigacaoFicha:
+    id: int
+    observacao_id: int
+    tipo: str
+    origem: str
+    destino: str
+
+
+@dataclass
+class RecolhaFicha:
+    id: int
+    seed_id: int
+    coletor: str
+    modo: str
+    estado: str
+    iniciada_em: datetime
+    terminada_em: datetime | None
+    erro: str | None
+    observacoes: list[ObservacaoFicha]
+    ligacoes: list[LigacaoFicha]
+
+
+@dataclass
+class SeedFicha:
+    id: int
+    dominio: str
+    modo: str
+    motivo: str
+    habilitada: bool
+    recolhas: list[RecolhaFicha]

@@ -11,7 +11,9 @@ from observatorio.modelos import (
     Ativo,
     Dominio,
     Ligacao,
+    LigacaoFicha,
     Observacao,
+    ObservacaoFicha,
     Organizacao,
     Recolha,
     Seed,
@@ -118,6 +120,26 @@ def listar_dominios(ligacao: psycopg.Connection, organizacao_id: int) -> list[Do
             SELECT dominio.id, dominio.nome
             FROM dominio
             JOIN seed_descoberta ON seed_descoberta.dominio_id = dominio.id
+            WHERE seed_descoberta.organizacao_id = %s
+            ORDER BY dominio.nome
+            """,
+            (organizacao_id,),
+        )
+        return cursor.fetchall()
+
+
+def listar_seeds_organizacao(
+    ligacao: psycopg.Connection, organizacao_id: int
+) -> list[Seed]:
+    with ligacao.cursor(row_factory=class_row(Seed)) as cursor:
+        cursor.execute(
+            """
+            SELECT seed_descoberta.id, seed_descoberta.organizacao_id,
+                   seed_descoberta.dominio_id, dominio.nome AS dominio,
+                   seed_descoberta.modo, seed_descoberta.motivo,
+                   seed_descoberta.habilitada
+            FROM seed_descoberta
+            JOIN dominio ON dominio.id = seed_descoberta.dominio_id
             WHERE seed_descoberta.organizacao_id = %s
             ORDER BY dominio.nome
             """,
@@ -330,6 +352,30 @@ def listar_observacoes_recolha(
         return cursor.fetchall()
 
 
+def listar_observacoes_ficha(
+    ligacao: psycopg.Connection, recolha_id: int
+) -> list[ObservacaoFicha]:
+    with ligacao.cursor(row_factory=class_row(ObservacaoFicha)) as cursor:
+        cursor.execute(
+            """
+            SELECT observacao.id, observacao.fonte, observacao.referencia,
+                   CASE ativo.tipo
+                       WHEN 'nome_dns' THEN dominio.nome
+                       ELSE ativo.endereco_ip::text
+                   END AS ativo,
+                   observacao.dados, observacao.sucesso, observacao.erro,
+                   observacao.observada_em
+            FROM observacao
+            JOIN ativo ON ativo.id = observacao.ativo_id
+            LEFT JOIN dominio ON dominio.id = ativo.dominio_id
+            WHERE observacao.recolha_id = %s
+            ORDER BY observacao.id
+            """,
+            (recolha_id,),
+        )
+        return cursor.fetchall()
+
+
 def listar_ligacoes_observacao(
     ligacao: psycopg.Connection, observacao_id: int
 ) -> list[Ligacao]:
@@ -342,5 +388,34 @@ def listar_ligacoes_observacao(
             ORDER BY id
             """,
             (observacao_id,),
+        )
+        return cursor.fetchall()
+
+
+def listar_ligacoes_ficha(
+    ligacao: psycopg.Connection, recolha_id: int
+) -> list[LigacaoFicha]:
+    with ligacao.cursor(row_factory=class_row(LigacaoFicha)) as cursor:
+        cursor.execute(
+            """
+            WITH ativos AS (
+                SELECT ativo.id,
+                       CASE ativo.tipo
+                           WHEN 'nome_dns' THEN dominio.nome
+                           ELSE ativo.endereco_ip::text
+                       END AS nome
+                FROM ativo
+                LEFT JOIN dominio ON dominio.id = ativo.dominio_id
+            )
+            SELECT ligacao.id, ligacao.observacao_id, ligacao.tipo,
+                   origem.nome AS origem, destino.nome AS destino
+            FROM ligacao
+            JOIN observacao ON observacao.id = ligacao.observacao_id
+            JOIN ativos origem ON origem.id = ligacao.origem_ativo_id
+            JOIN ativos destino ON destino.id = ligacao.destino_ativo_id
+            WHERE observacao.recolha_id = %s
+            ORDER BY ligacao.id
+            """,
+            (recolha_id,),
         )
         return cursor.fetchall()
