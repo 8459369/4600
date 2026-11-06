@@ -1,11 +1,13 @@
-from dataclasses import dataclass
 import os
+from dataclasses import dataclass
+from datetime import datetime, timezone
 
 import dns.exception
 from flask import Flask
 
 from observatorio import dados, servicos
 from observatorio.consulta_dns import TIPOS_REGISTO
+from observatorio.modelos import Observacao
 
 
 @dataclass(frozen=True)
@@ -89,6 +91,7 @@ def _respostas_alteradas() -> dict[str, list[object]]:
 
 
 def principal() -> None:
+    _testar_evidencia_dns_invalida_falha()
     aplicacao = Flask(__name__)
     aplicacao.config["DATABASE_URL"] = os.environ["DATABASE_URL"]
 
@@ -104,6 +107,30 @@ def principal() -> None:
 
         seed_passiva = _criar_seed("passiva.4600.test", "passivo")
         _testar_seed_passiva(seed_passiva)
+
+
+def _testar_evidencia_dns_invalida_falha() -> None:
+    dados_invalidos = (
+        {"nome": "coleta.4600.test", "tipo": "A"},
+        {"nome": "coleta.4600.test", "tipo": "A", "registos": ["inválido"]},
+    )
+    for indice, payload in enumerate(dados_invalidos, start=1):
+        observacao = Observacao(
+            id=indice,
+            recolha_id=1,
+            ativo_id=1,
+            fonte="dns",
+            referencia="coleta.4600.test/A",
+            dados=payload,
+            sucesso=True,
+            erro=None,
+            observada_em=datetime.now(timezone.utc),
+        )
+        try:
+            servicos._registos(observacao)
+        except (TypeError, ValueError):
+            continue
+        raise AssertionError("A evidência DNS malformada foi aceite")
 
 
 def _criar_seed(nome: str, modo: str) -> int:

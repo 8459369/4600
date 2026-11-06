@@ -2,7 +2,6 @@
 # todas ou nenhuma. Não escreve SQL: chama a camada de dados. É aqui que se
 # abre a ligação, e cada "with ligar()" é uma transação.
 import json
-
 from collections.abc import Sequence
 from datetime import datetime, timezone
 from typing import Final
@@ -11,18 +10,22 @@ import psycopg
 
 from observatorio import dados
 from observatorio.consulta_dns import (
-    LigacaoDNS,
-    ResultadoDNS,
-    ResolvedorDNS,
     TIPOS_REGISTO,
+    LigacaoDNS,
+    ResolvedorDNS,
+    ResultadoDNS,
     consultar_dominio,
     criar_resolvedor,
 )
 from observatorio.dominios import normalizar_dominio
 from observatorio.modelos import (
+    AlteracaoFicha,
     Dominio,
-    Organizacao,
+    JsonObject,
+    LigacaoFicha,
     Observacao,
+    ObservacaoFicha,
+    Organizacao,
     Recolha,
     RecolhaFicha,
     SeedFicha,
@@ -118,10 +121,43 @@ def obter_ficha_com_recolhas(
         organizacao = dados.obter_organizacao(ligacao, organizacao_id)
         if organizacao is None:
             return None
-        seeds = []
-        for seed in dados.listar_seeds_organizacao(ligacao, organizacao_id):
-            recolhas = []
-            for recolha in dados.listar_recolhas_seed(ligacao, seed.id):
+        seeds_db = dados.listar_seeds_organizacao(ligacao, organizacao_id)
+        seed_ids = [seed.id for seed in seeds_db]
+        recolhas_db = dados.listar_recolhas_seeds(ligacao, seed_ids)
+        recolha_ids = [recolha.id for recolha in recolhas_db]
+
+        recolhas_por_seed: dict[int, list[Recolha]] = {
+            seed_id: [] for seed_id in seed_ids
+        }
+        for recolha in recolhas_db:
+            recolhas_por_seed[recolha.seed_id].append(recolha)
+
+        observacoes_por_recolha: dict[int, list[ObservacaoFicha]] = {
+            recolha_id: [] for recolha_id in recolha_ids
+        }
+        for observacao in dados.listar_observacoes_ficha_recolhas(
+            ligacao, recolha_ids
+        ):
+            observacoes_por_recolha[observacao.recolha_id].append(observacao)
+
+        ligacoes_por_recolha: dict[int, list[LigacaoFicha]] = {
+            recolha_id: [] for recolha_id in recolha_ids
+        }
+        for ligacao_ficha in dados.listar_ligacoes_ficha_recolhas(
+            ligacao, recolha_ids
+        ):
+            ligacoes_por_recolha[ligacao_ficha.recolha_id].append(ligacao_ficha)
+
+        alteracoes_por_seed: dict[int, list[AlteracaoFicha]] = {
+            seed_id: [] for seed_id in seed_ids
+        }
+        for alteracao in dados.listar_alteracoes_ficha_seeds(ligacao, seed_ids):
+            alteracoes_por_seed[alteracao.seed_id].append(alteracao)
+
+        seeds: list[SeedFicha] = []
+        for seed in seeds_db:
+            recolhas: list[RecolhaFicha] = []
+            for recolha in recolhas_por_seed[seed.id]:
                 recolhas.append(
                     RecolhaFicha(
                         id=recolha.id,
@@ -132,10 +168,8 @@ def obter_ficha_com_recolhas(
                         iniciada_em=recolha.iniciada_em,
                         terminada_em=recolha.terminada_em,
                         erro=recolha.erro,
-                        observacoes=dados.listar_observacoes_ficha(
-                            ligacao, recolha.id
-                        ),
-                        ligacoes=dados.listar_ligacoes_ficha(ligacao, recolha.id),
+                        observacoes=observacoes_por_recolha[recolha.id],
+                        ligacoes=ligacoes_por_recolha[recolha.id],
                     )
                 )
             seeds.append(
@@ -146,12 +180,11 @@ def obter_ficha_com_recolhas(
                     motivo=seed.motivo,
                     habilitada=seed.habilitada,
                     recolhas=recolhas,
-                    alteracoes=dados.listar_alteracoes_ficha_seed(
-                        ligacao, seed.id
-                    ),
+                    alteracoes=alteracoes_por_seed[seed.id],
                 )
             )
-        return organizacao, dados.listar_dominios(ligacao, organizacao_id), seeds
+        dominios = dados.listar_dominios(ligacao, organizacao_id)
+        return organizacao, dominios, seeds
 
 
 def recolher_dns(
@@ -280,8 +313,8 @@ def _guardar_diferencas(
     anterior: Observacao,
     atual: Observacao,
     categoria: str,
-    anteriores: dict[str, object],
-    atuais: dict[str, object],
+    anteriores: dict[str, JsonObject],
+    atuais: dict[str, JsonObject],
 ) -> None:
     for chave in sorted(atuais.keys() - anteriores.keys()):
         dados.criar_alteracao(
@@ -305,21 +338,42 @@ def _guardar_diferencas(
         )
 
 
-def _registos(observacao: Observacao) -> dict[str, object]:
-    if not isinstance(observacao.dados, dict):
-        return {}
-    registos = observacao.dados.get("registos", [])
-    if not isinstance(registos, list):
-        return {}
-    return {_chave_json(registo): registo for registo in registos}
+def _registos(observacao: Observacao) -> dict[str, JsonObject]:
+    dados_observacao = observacao.dados
+    if not isinstance(dados_observacao, dict):
+        raise TypeError(
+            f"Os dados da observação {observacao.id} não são um objeto JSON."
+        )
+
+    nome = dados_observacao.get("nome")
+    tipo = dados_observacao.get("tipo")
+    registos = dados_observacao.get("registos")
+    if (
+        not isinstance(nome, str)
+        or not isinstance(tipo, str)
+        or tipo not in TIPOS_REGISTO
+        or not isinstance(registos, list)
+    ):
+        raise ValueError(
+            f"Os dados DNS da observação {observacao.id} têm uma estrutura inválida."
+        )
+
+    resultado: dict[str, JsonObject] = {}
+    for registo in registos:
+        if not isinstance(registo, dict):
+            raise TypeError(
+                f"A observação {observacao.id} contém um registo DNS inválido."
+            )
+        resultado[_chave_json(registo)] = registo
+    return resultado
 
 
 def _ligacoes(
     ligacao: psycopg.Connection, observacao_id: int
-) -> dict[str, object]:
-    resultado = {}
+) -> dict[str, JsonObject]:
+    resultado: dict[str, JsonObject] = {}
     for relacao in dados.listar_ligacoes_ficha_observacao(ligacao, observacao_id):
-        valor = {
+        valor: JsonObject = {
             "tipo": relacao.tipo,
             "origem": relacao.origem,
             "destino": relacao.destino,
@@ -369,5 +423,7 @@ def _marcar_recolha_falhada(recolha_id: int, erro: Exception) -> None:
                 datetime.now(timezone.utc),
                 mensagem,
             )
-    except Exception as erro:
-        raise RuntimeError("Não foi possível registar a falha da recolha") from erro
+    except Exception as erro_gravacao:
+        raise RuntimeError(
+            "Não foi possível registar a falha da recolha"
+        ) from erro_gravacao

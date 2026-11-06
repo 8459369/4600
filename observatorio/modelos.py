@@ -1,7 +1,10 @@
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
 from ipaddress import IPv4Address, IPv6Address
-from typing import Any
+from typing import TypeAlias
+
+JsonObject: TypeAlias = Mapping[str, object]
 
 
 @dataclass
@@ -59,7 +62,7 @@ class Observacao:
     ativo_id: int
     fonte: str
     referencia: str
-    dados: Any
+    dados: JsonObject
     sucesso: bool
     erro: str | None
     observada_em: datetime
@@ -77,10 +80,11 @@ class Ligacao:
 @dataclass
 class ObservacaoFicha:
     id: int
+    recolha_id: int
     fonte: str
     referencia: str
     ativo: str
-    dados: Any
+    dados: JsonObject
     sucesso: bool
     erro: str | None
     observada_em: datetime
@@ -89,6 +93,7 @@ class ObservacaoFicha:
 @dataclass
 class LigacaoFicha:
     id: int
+    recolha_id: int
     observacao_id: int
     tipo: str
     origem: str
@@ -98,10 +103,11 @@ class LigacaoFicha:
 @dataclass
 class AlteracaoFicha:
     id: int
+    seed_id: int
     referencia: str
     categoria: str
     tipo: str
-    dados: Any
+    dados: JsonObject
     recolha_anterior_id: int
     recolha_atual_id: int
     anterior_observada_em: datetime
