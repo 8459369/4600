@@ -159,9 +159,20 @@ def obter_organizacao(organizacao_id: int) -> Organizacao | None:
         return dados.obter_organizacao(ligacao, organizacao_id)
 
 
-def listar_organizacoes() -> list[Organizacao]:
+def listar_organizacoes(
+    pesquisa: str = "",
+    tipo_id: int | None = None,
+    freguesia_id: int | None = None,
+    setor: str = "",
+) -> list[Organizacao]:
     with dados.ligar() as ligacao:
-        return dados.listar_organizacoes(ligacao)
+        return dados.listar_organizacoes(
+            ligacao,
+            pesquisa.strip() or None,
+            tipo_id,
+            freguesia_id,
+            setor or None,
+        )
 
 
 def opcoes_formulario() -> tuple[list[tuple[int, str]], list[tuple[int, str]]]:

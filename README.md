@@ -98,7 +98,7 @@ Serve em `http://127.0.0.1:5000`. É o servidor de desenvolvimento do Flask, nã
 
 | Método e caminho | Função |
 | --- | --- |
-| `GET /` | Lista de organizações |
+| `GET /` | Lista de organizações. Aceita `q` (nome ou domínio), `tipo`, `freguesia` e `setor` para filtrar |
 | `GET`, `POST /organizacoes/nova` | Regista uma organização |
 | `GET /organizacoes/<id>` | Ficha, domínios, recolhas e histórico da organização |
 | `GET`, `POST /organizacoes/<id>/editar` | Edita os dados de uma organização |

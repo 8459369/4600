@@ -92,10 +92,51 @@ def atualizar_organizacao(
     )
 
 
-def listar_organizacoes(ligacao: psycopg.Connection) -> list[Organizacao]:
+def listar_organizacoes(
+    ligacao: psycopg.Connection,
+    pesquisa: str | None,
+    tipo_id: int | None,
+    freguesia_id: int | None,
+    setor: str | None,
+) -> list[Organizacao]:
+    condicoes: list[str] = []
+    parametros: list[object] = []
+    if pesquisa is not None:
+        padrao = f"%{_escapar_like(pesquisa)}%"
+        condicoes.append(
+            """
+            (organizacao.nome ILIKE %s OR EXISTS (
+                SELECT 1
+                FROM seed_descoberta
+                JOIN dominio ON dominio.id = seed_descoberta.dominio_id
+                WHERE seed_descoberta.organizacao_id = organizacao.id
+                  AND dominio.nome ILIKE %s
+            ))
+            """
+        )
+        parametros += [padrao, padrao]
+    if tipo_id is not None:
+        condicoes.append("organizacao.tipo_organizacao_id = %s")
+        parametros.append(tipo_id)
+    if freguesia_id is not None:
+        condicoes.append("organizacao.freguesia_id = %s")
+        parametros.append(freguesia_id)
+    if setor is not None:
+        condicoes.append("organizacao.setor = %s")
+        parametros.append(setor)
+
+    consulta = SELECT_ORGANIZACOES
+    if condicoes:
+        consulta += " WHERE " + " AND ".join(condicoes)
+    consulta += " ORDER BY organizacao.nome"
     with ligacao.cursor(row_factory=class_row(Organizacao)) as cursor:
-        cursor.execute(SELECT_ORGANIZACOES + " ORDER BY organizacao.nome")
+        cursor.execute(consulta, parametros)
         return cursor.fetchall()
+
+
+def _escapar_like(texto: str) -> str:
+    # Sem isto, "%" e "_" escritos pelo operador funcionariam como curingas.
+    return texto.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
 def obter_organizacao(ligacao: psycopg.Connection, organizacao_id: int) -> Organizacao | None:

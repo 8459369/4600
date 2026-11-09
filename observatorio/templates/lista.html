@@ -2,8 +2,42 @@
 {% block conteudo %}
   <h1>Organizações</h1>
   <p><a href="{{ url_for('nova') }}">Regista uma organização</a></p>
+  <form method="get">
+    <label>Nome ou domínio
+      <input name="q" value="{{ pesquisa }}">
+    </label>
+    <label>Tipo
+      <select name="tipo">
+        <option value="">Todos</option>
+        {% for id, nome in tipos %}
+          <option value="{{ id }}" {{ 'selected' if tipo_id == id }}>{{ nome }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>Freguesia
+      <select name="freguesia">
+        <option value="">Todas</option>
+        {% for id, nome in freguesias %}
+          <option value="{{ id }}" {{ 'selected' if freguesia_id == id }}>{{ nome }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>Setor
+      <select name="setor">
+        <option value="">Todos</option>
+        {% for codigo, nome in setores.items() %}
+          <option value="{{ codigo }}" {{ 'selected' if setor == codigo }}>{{ nome }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <p><button type="submit">Filtra</button> <a href="{{ url_for('lista') }}">Limpa os filtros</a></p>
+  </form>
   {% if not organizacoes %}
-    <p>Ainda não há organizações registadas.</p>
+    {% if filtrado %}
+      <p>Nenhuma organização corresponde à pesquisa.</p>
+    {% else %}
+      <p>Ainda não há organizações registadas.</p>
+    {% endif %}
   {% else %}
     <table>
       <thead><tr><th>Nome</th><th>Tipo</th><th>Freguesia</th></tr></thead>

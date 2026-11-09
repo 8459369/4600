@@ -6,7 +6,25 @@ from observatorio.servicos import ErroValidacao
 
 
 def lista() -> str:
-    return render_template("lista.html", organizacoes=servicos.listar_organizacoes())
+    pesquisa = request.args.get("q", "")
+    tipo_id = request.args.get("tipo", type=int)
+    freguesia_id = request.args.get("freguesia", type=int)
+    setor = request.args.get("setor", "")
+    tipos, freguesias = servicos.opcoes_formulario()
+    return render_template(
+        "lista.html",
+        organizacoes=servicos.listar_organizacoes(
+            pesquisa, tipo_id, freguesia_id, setor
+        ),
+        pesquisa=pesquisa,
+        tipo_id=tipo_id,
+        freguesia_id=freguesia_id,
+        setor=setor,
+        tipos=tipos,
+        freguesias=freguesias,
+        setores=servicos.SETORES,
+        filtrado=bool(pesquisa or tipo_id or freguesia_id or setor),
+    )
 
 
 def _valores_formulario() -> tuple[str, str, int | None, str, int | None]:
