@@ -47,6 +47,7 @@ def principal() -> None:
         ):
             assert texto in pagina, texto
     _testar_gestao_organizacao(aplicacao)
+    _testar_pesquisa_organizacoes(aplicacao)
 
 
 def _testar_gestao_organizacao(aplicacao: Flask) -> None:
@@ -148,6 +149,50 @@ def _testar_gestao_organizacao(aplicacao: Flask) -> None:
             data={"habilitada": "2"},
         )
         assert sem_valor.status_code == 400
+
+
+def _testar_pesquisa_organizacoes(aplicacao: Flask) -> None:
+    with aplicacao.app_context():
+        tipos, freguesias = servicos.opcoes_formulario()
+    with aplicacao.test_client() as cliente:
+
+        def lista(**filtros: object) -> str:
+            texto = {chave: str(valor) for chave, valor in filtros.items()}
+            return cliente.get("/", query_string=texto).get_data(as_text=True)
+
+        todas = lista()
+        assert "Gestão editada.4600.test" in todas
+        assert "Outra gestão.4600.test" in todas
+
+        por_nome = lista(q="editada")
+        assert "Gestão editada.4600.test" in por_nome
+        assert "Outra gestão.4600.test" not in por_nome
+
+        por_dominio = lista(q="outra.4600")
+        assert "Outra gestão.4600.test" in por_dominio
+        assert "Gestão editada.4600.test" not in por_dominio
+
+        por_setor = lista(setor="privado")
+        assert "Outra gestão.4600.test" in por_setor
+        assert "Gestão editada.4600.test" not in por_setor
+
+        por_freguesia = lista(freguesia=freguesias[0][0])
+        assert "Gestão editada.4600.test" in por_freguesia
+        assert "Outra gestão.4600.test" not in por_freguesia
+
+        por_tipo = lista(tipo=tipos[1][0])
+        assert "Gestão editada.4600.test" not in por_tipo
+        assert "Outra gestão.4600.test" not in por_tipo
+
+        combinada = lista(q="gestao", setor="publico")
+        assert "Gestão editada.4600.test" in combinada
+        assert "Outra gestão.4600.test" not in combinada
+
+        # "%" e "_" são literais: sem escape, "%" traria todas as organizações.
+        literal = lista(q="%")
+        assert "Gestão editada.4600.test" not in literal
+        assert "Outra gestão.4600.test" not in literal
+        assert "Nenhuma organização corresponde à pesquisa." in literal
 
 
 if __name__ == "__main__":
