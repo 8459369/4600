@@ -27,10 +27,16 @@ def main(argumentos: list[str] | None = None) -> int:
         except servicos.ErroValidacao as erro:
             print(f"Erro: {erro}", file=sys.stderr)
             return 2
+        comparacoes = servicos.comparacoes_ignoradas_da_recolha(recolha.id)
 
     print(f"Recolha {recolha.id}: {recolha.estado}.")
     if recolha.erro:
         print(f"Erros: {recolha.erro}")
+    for comparacao in comparacoes:
+        print(
+            f"Comparação de registos com a observação #{comparacao.observacao_anterior_id} "
+            f"não feita: {comparacao.motivo}"
+        )
     return 1 if recolha.estado == "falhada" else 0
 
 

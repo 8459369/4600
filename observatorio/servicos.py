@@ -262,6 +262,22 @@ def obter_ficha_com_recolhas(
         return organizacao, dominios, seeds
 
 
+def comparacoes_ignoradas_da_recolha(recolha_id: int) -> list[ComparacaoIgnorada]:
+    with dados.ligar() as ligacao:
+        recolha = dados.obter_recolha(ligacao, recolha_id)
+        if recolha is None:
+            raise ErroValidacao("A recolha não existe.")
+        recolhas = dados.listar_recolhas_seeds(ligacao, [recolha.seed_id])
+        observacoes = dados.listar_observacoes_ficha_recolhas(
+            ligacao, [recolha_seed.id for recolha_seed in recolhas]
+        )
+    return [
+        comparacao
+        for comparacao in _comparacoes_ignoradas(observacoes)
+        if comparacao.recolha_id == recolha_id
+    ]
+
+
 def recolher_dns(
     seed_id: int,
     timeout: float = 3.0,
