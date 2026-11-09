@@ -37,6 +37,7 @@ SETORES: Final = {"publico": "Público", "privado": "Privado", "social": "Social
 TAMANHO_NOME: Final = 200
 MOTIVO_SEED: Final = "Introduzido pelo operador"
 COLETOR_DNS: Final = "dns"
+MENSAGEM_NIF_DUPLICADO: Final = "Já existe uma organização com esse NIF associado."
 
 
 class ErroValidacao(Exception):
@@ -50,13 +51,14 @@ class HistoricoIlegivel(Exception):
     pass
 
 
-def registar_organizacao(
+def _validar_organizacao(
+    ligacao: psycopg.Connection,
     nome: str,
     nif: str,
     tipo_id: int | None,
     setor: str,
     freguesia_id: int | None,
-) -> int:
+) -> tuple[str, str | None, int]:
     nome = nome.strip()
     if not nome:
         raise ErroValidacao("Indica o nome da organização.")
@@ -66,25 +68,65 @@ def registar_organizacao(
         )
     if tipo_id is None:
         raise ErroValidacao("Escolhe o tipo de organização.")
+    if tipo_id not in {id for id, _ in dados.listar_tipos(ligacao)}:
+        raise ErroValidacao("O tipo de organização que escolheste não existe.")
     if setor not in SETORES:
         raise ErroValidacao("Escolhe o setor.")
+    if freguesia_id is not None and freguesia_id not in {
+        id for id, _ in dados.listar_freguesias(ligacao)
+    }:
+        raise ErroValidacao("A freguesia que escolheste não existe.")
     nif = nif.strip()
     if nif and not (nif.isascii() and nif.isdigit() and len(nif) == 9):
         raise ErroValidacao("Indica um NIF com exatamente 9 dígitos.")
+    return nome, nif or None, tipo_id
 
+
+def registar_organizacao(
+    nome: str,
+    nif: str,
+    tipo_id: int | None,
+    setor: str,
+    freguesia_id: int | None,
+) -> int:
     with dados.ligar() as ligacao:
-        if tipo_id not in {id for id, _ in dados.listar_tipos(ligacao)}:
-            raise ErroValidacao("O tipo de organização que escolheste não existe.")
-        if freguesia_id is not None and freguesia_id not in {
-            id for id, _ in dados.listar_freguesias(ligacao)
-        }:
-            raise ErroValidacao("A freguesia que escolheste não existe.")
+        nome, nif_guardado, tipo_id = _validar_organizacao(
+            ligacao, nome, nif, tipo_id, setor, freguesia_id
+        )
         try:
             return dados.criar_organizacao(
-                ligacao, nome, nif or None, tipo_id, setor, freguesia_id
+                ligacao, nome, nif_guardado, tipo_id, setor, freguesia_id
             )
         except psycopg.errors.UniqueViolation:
-            raise ErroValidacao("Já existe uma organização com esse NIF associado.") from None
+            raise ErroValidacao(MENSAGEM_NIF_DUPLICADO) from None
+
+
+def editar_organizacao(
+    organizacao_id: int,
+    nome: str,
+    nif: str,
+    tipo_id: int | None,
+    setor: str,
+    freguesia_id: int | None,
+) -> None:
+    with dados.ligar() as ligacao:
+        if dados.obter_organizacao(ligacao, organizacao_id) is None:
+            raise ErroValidacao("A organização não existe.")
+        nome, nif_guardado, tipo_id = _validar_organizacao(
+            ligacao, nome, nif, tipo_id, setor, freguesia_id
+        )
+        try:
+            dados.atualizar_organizacao(
+                ligacao,
+                organizacao_id,
+                nome,
+                nif_guardado,
+                tipo_id,
+                setor,
+                freguesia_id,
+            )
+        except psycopg.errors.UniqueViolation:
+            raise ErroValidacao(MENSAGEM_NIF_DUPLICADO) from None
 
 
 def associar_dominio(organizacao_id: int, texto: str) -> bool:
@@ -100,6 +142,21 @@ def associar_dominio(organizacao_id: int, texto: str) -> bool:
             raise ErroValidacao("A organização não existe.")
         dominio_id = dados.garantir_dominio(ligacao, nome)
         return dados.criar_seed(ligacao, organizacao_id, dominio_id, MOTIVO_SEED)
+
+
+def definir_habilitacao_seed(
+    organizacao_id: int, seed_id: int, habilitada: bool
+) -> None:
+    with dados.ligar() as ligacao:
+        if not dados.atualizar_habilitacao_seed(
+            ligacao, organizacao_id, seed_id, habilitada
+        ):
+            raise ErroValidacao("A seed não existe nesta organização.")
+
+
+def obter_organizacao(organizacao_id: int) -> Organizacao | None:
+    with dados.ligar() as ligacao:
+        return dados.obter_organizacao(ligacao, organizacao_id)
 
 
 def listar_organizacoes() -> list[Organizacao]:

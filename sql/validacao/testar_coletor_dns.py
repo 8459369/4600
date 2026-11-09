@@ -110,6 +110,9 @@ def principal() -> None:
         seed_passiva = _criar_seed("passiva.4600.test", "passivo")
         _testar_seed_passiva(seed_passiva)
 
+        seed_desabilitada = _criar_seed("desabilitada.4600.test", "observacao")
+        _testar_seed_desabilitada(seed_desabilitada)
+
 
 def _testar_evidencia_dns_invalida_falha() -> None:
     dados_invalidos = (
@@ -356,6 +359,25 @@ def _contar_alteracoes(seed_id: int, filtro: str | None = None) -> int:
         consulta += f" AND {filtro}"
     with dados.ligar() as ligacao:
         return ligacao.execute(consulta, parametros).fetchone()[0]
+
+
+def _testar_seed_desabilitada(seed_id: int) -> None:
+    organizacao_id = _organizacao_da_seed(seed_id)
+    servicos.definir_habilitacao_seed(organizacao_id, seed_id, False)
+    resolvedor = ResolvedorSimulado()
+    try:
+        servicos.recolher_dns(seed_id, timeout=0.5, resolvedor=resolvedor)
+    except servicos.ErroValidacao as erro:
+        assert "desabilitada" in str(erro)
+    else:
+        raise AssertionError("A seed desabilitada foi recolhida")
+    assert resolvedor.chamadas == []
+
+    servicos.definir_habilitacao_seed(organizacao_id, seed_id, True)
+    recolha = servicos.recolher_dns(
+        seed_id, timeout=0.5, resolvedor=ResolvedorSimulado()
+    )
+    assert recolha.estado == "concluida"
 
 
 def _testar_seed_passiva(seed_id: int) -> None:
