@@ -25,8 +25,9 @@ from observatorio.modelos import (
 # LEFT JOIN na freguesia porque a organização pode não ter freguesia.
 SELECT_ORGANIZACOES: Final = """
     SELECT organizacao.id, organizacao.nome, organizacao.nif,
+           organizacao.tipo_organizacao_id AS tipo_id,
            tipo_organizacao.nome AS tipo, organizacao.setor,
-           freguesia.nome AS freguesia
+           organizacao.freguesia_id, freguesia.nome AS freguesia
     FROM organizacao
     JOIN tipo_organizacao ON tipo_organizacao.id = organizacao.tipo_organizacao_id
     LEFT JOIN freguesia ON freguesia.id = organizacao.freguesia_id
@@ -72,6 +73,25 @@ def criar_organizacao(
     return _id_gerado(cursor)
 
 
+def atualizar_organizacao(
+    ligacao: psycopg.Connection,
+    organizacao_id: int,
+    nome: str,
+    nif: str | None,
+    tipo_organizacao_id: int,
+    setor: str,
+    freguesia_id: int | None,
+) -> None:
+    ligacao.execute(
+        """
+        UPDATE organizacao
+        SET nome = %s, nif = %s, tipo_organizacao_id = %s, setor = %s, freguesia_id = %s
+        WHERE id = %s
+        """,
+        (nome, nif, tipo_organizacao_id, setor, freguesia_id, organizacao_id),
+    )
+
+
 def listar_organizacoes(ligacao: psycopg.Connection) -> list[Organizacao]:
     with ligacao.cursor(row_factory=class_row(Organizacao)) as cursor:
         cursor.execute(SELECT_ORGANIZACOES + " ORDER BY organizacao.nome")
@@ -112,6 +132,21 @@ def criar_seed(
         ON CONFLICT (organizacao_id, dominio_id) DO NOTHING
         """,
         (organizacao_id, dominio_id, modo, motivo),
+    )
+    return cursor.rowcount == 1
+
+
+def atualizar_habilitacao_seed(
+    ligacao: psycopg.Connection, organizacao_id: int, seed_id: int, habilitada: bool
+) -> bool:
+    # Filtrar pela organização impede mudar a seed de outra organização.
+    cursor = ligacao.execute(
+        """
+        UPDATE seed_descoberta
+        SET habilitada = %s
+        WHERE id = %s AND organizacao_id = %s
+        """,
+        (habilitada, seed_id, organizacao_id),
     )
     return cursor.rowcount == 1
 

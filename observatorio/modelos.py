@@ -12,8 +12,10 @@ class Organizacao:
     id: int
     nome: str
     nif: str | None
+    tipo_id: int
     tipo: str
     setor: str
+    freguesia_id: int | None
     freguesia: str | None
 
 

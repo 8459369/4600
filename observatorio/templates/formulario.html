@@ -1,7 +1,7 @@
 {% extends "base.html" %}
-{% block titulo %}Nova organização{% endblock %}
+{% block titulo %}{{ titulo }}{% endblock %}
 {% block conteudo %}
-  <h1>Nova organização</h1>
+  <h1>{{ titulo }}</h1>
   {% if erro %}<p class="aviso erro">{{ erro }}</p>{% endif %}
   <form method="post">
     <label>Nome
@@ -34,6 +34,6 @@
         {% endfor %}
       </select>
     </label>
-    <p><button type="submit">Regista</button></p>
+    <p><button type="submit">{{ texto_botao }}</button></p>
   </form>
 {% endblock %}

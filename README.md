@@ -81,8 +81,8 @@ Uma seed em modo `observacao` pode ser recolhida pela linha de comandos:
 
 O comando consulta apenas A, AAAA, MX, NS, CNAME e TXT. O timeout pode ser
 ajustado com `--timeout` e o resolvedor pode ser indicado com um ou mais
-`--nameserver`. Seeds em modo `passivo` são recusadas antes de qualquer pedido
-DNS. Recolhas sucessivas conservam as observações e registam alterações de
+`--nameserver`. Seeds em modo `passivo` ou desabilitadas são recusadas antes de
+qualquer pedido DNS. Recolhas sucessivas conservam as observações e registam alterações de
 registos ou ligações na ficha da organização.
 
 ## Executa a aplicação
@@ -98,6 +98,8 @@ Serve em `http://127.0.0.1:5000`. É o servidor de desenvolvimento do Flask, nã
 | `GET /` | Lista de organizações |
 | `GET`, `POST /organizacoes/nova` | Regista uma organização |
 | `GET /organizacoes/<id>` | Ficha, domínios, recolhas e histórico da organização |
+| `GET`, `POST /organizacoes/<id>/editar` | Edita os dados de uma organização |
 | `POST /organizacoes/<id>/dominios` | Associa um domínio |
+| `POST /organizacoes/<id>/seeds/<seed_id>/habilitacao` | Desabilita (`habilitada=0`) ou reabilita (`habilitada=1`) uma seed |
 
 Não há autenticação nem proteção CSRF: a aplicação serve só uma máquina de confiança.
