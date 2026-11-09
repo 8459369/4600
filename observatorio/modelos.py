@@ -115,6 +115,13 @@ class AlteracaoFicha:
 
 
 @dataclass
+class ComparacaoIgnorada:
+    recolha_id: int
+    observacao_anterior_id: int
+    motivo: str
+
+
+@dataclass
 class RecolhaFicha:
     id: int
     seed_id: int
@@ -126,6 +133,7 @@ class RecolhaFicha:
     erro: str | None
     observacoes: list[ObservacaoFicha]
     ligacoes: list[LigacaoFicha]
+    comparacoes_ignoradas: list[ComparacaoIgnorada]
 
 
 @dataclass

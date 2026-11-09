@@ -1,13 +1,12 @@
 import os
 from dataclasses import dataclass
-from datetime import datetime, timezone
 
 import dns.exception
 from flask import Flask
 
-from observatorio import dados, servicos
+from observatorio import create_app, dados, servicos
 from observatorio.consulta_dns import TIPOS_REGISTO
-from observatorio.modelos import Observacao
+from observatorio.modelos import ComparacaoIgnorada
 
 
 @dataclass(frozen=True)
@@ -118,19 +117,8 @@ def _testar_evidencia_dns_invalida_falha() -> None:
         {"nome": "coleta.4600.test", "tipo": "A", "registos": ["inválido"]},
     )
     for indice, payload in enumerate(dados_invalidos, start=1):
-        observacao = Observacao(
-            id=indice,
-            recolha_id=1,
-            ativo_id=1,
-            fonte="dns",
-            referencia="coleta.4600.test/A",
-            dados=payload,
-            sucesso=True,
-            erro=None,
-            observada_em=datetime.now(timezone.utc),
-        )
         try:
-            servicos._registos(observacao)
+            servicos._registos(indice, payload)
         except servicos.HistoricoIlegivel:
             continue
         raise AssertionError("A evidência DNS malformada foi aceite")
@@ -286,18 +274,48 @@ def _testar_historico_ilegivel_nao_bloqueia(seed_id: int) -> None:
     recolha_afetada = servicos.recolher_dns(
         seed_id, timeout=0.5, resolvedor=ResolvedorSimulado()
     )
-    assert recolha_afetada.estado == "parcial"
-    assert recolha_afetada.erro is not None
-    assert "alterações não comparadas" in recolha_afetada.erro
+    assert recolha_afetada.estado == "concluida"
+    assert recolha_afetada.erro is None
     with dados.ligar() as ligacao:
         observacoes = dados.listar_observacoes_recolha(ligacao, recolha_afetada.id)
     assert len(observacoes) == len(TIPOS_REGISTO)
     assert all(observacao.sucesso for observacao in observacoes)
+    comparacoes = _comparacoes_da_recolha(seed_id, recolha_afetada.id)
+    assert len(comparacoes) == 1
+    assert "estrutura inválida" in comparacoes[0].motivo
+    with create_app().test_client() as cliente:
+        pagina = cliente.get(f"/organizacoes/{_organizacao_da_seed(seed_id)}")
+    assert pagina.status_code == 200
+    assert "não feita" in pagina.get_data(as_text=True)
 
     recolha_seguinte = servicos.recolher_dns(
         seed_id, timeout=0.5, resolvedor=ResolvedorSimulado()
     )
     assert recolha_seguinte.estado == "concluida"
+    assert _comparacoes_da_recolha(seed_id, recolha_seguinte.id) == []
+
+
+def _organizacao_da_seed(seed_id: int) -> int:
+    with dados.ligar() as ligacao:
+        return ligacao.execute(
+            "SELECT organizacao_id FROM seed_descoberta WHERE id = %s", (seed_id,)
+        ).fetchone()[0]
+
+
+def _comparacoes_da_recolha(
+    seed_id: int, recolha_id: int
+) -> list[ComparacaoIgnorada]:
+    ficha = servicos.obter_ficha_com_recolhas(_organizacao_da_seed(seed_id))
+    assert ficha is not None
+    _, _, seeds = ficha
+    recolhas = [
+        recolha
+        for seed in seeds
+        for recolha in seed.recolhas
+        if recolha.id == recolha_id
+    ]
+    assert len(recolhas) == 1
+    return recolhas[0].comparacoes_ignoradas
 
 
 def _testar_falha_total_preserva_historico(seed_id: int) -> None:

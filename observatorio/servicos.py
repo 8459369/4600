@@ -20,6 +20,7 @@ from observatorio.consulta_dns import (
 from observatorio.dominios import normalizar_dominio
 from observatorio.modelos import (
     AlteracaoFicha,
+    ComparacaoIgnorada,
     Dominio,
     JsonObject,
     LigacaoFicha,
@@ -44,9 +45,8 @@ class ErroValidacao(Exception):
 
 
 class HistoricoIlegivel(Exception):
-    # Evidência anterior que a comparação não consegue ler. A recolha nova
-    # continua e fica registada como parcial, para que a comparação volte a
-    # funcionar na recolha seguinte.
+    # Evidência anterior que a comparação não consegue ler. Não impede a
+    # recolha nova; a ficha mostra a comparação que ficou por fazer.
     pass
 
 
@@ -163,6 +163,12 @@ def obter_ficha_com_recolhas(
 
         seeds: list[SeedFicha] = []
         for seed in seeds_db:
+            observacoes_seed = [
+                observacao
+                for recolha in recolhas_por_seed[seed.id]
+                for observacao in observacoes_por_recolha[recolha.id]
+            ]
+            comparacoes_seed = _comparacoes_ignoradas(observacoes_seed)
             recolhas: list[RecolhaFicha] = []
             for recolha in recolhas_por_seed[seed.id]:
                 recolhas.append(
@@ -177,6 +183,11 @@ def obter_ficha_com_recolhas(
                         erro=recolha.erro,
                         observacoes=observacoes_por_recolha[recolha.id],
                         ligacoes=ligacoes_por_recolha[recolha.id],
+                        comparacoes_ignoradas=[
+                            comparacao
+                            for comparacao in comparacoes_seed
+                            if comparacao.recolha_id == recolha.id
+                        ],
                     )
                 )
             seeds.append(
@@ -240,11 +251,10 @@ def recolher_dns(
                     _guardar_ligacoes(
                         ligacao, observacao_id, ativo_origem_id, resultado.ligacoes
                     )
-            avisos = _registar_alteracoes(ligacao, seed.id, recolha_id)
-            estado, erro = _juntar_avisos(estado, erro, avisos)
             dados.atualizar_recolha(
                 ligacao, recolha_id, estado, datetime.now(timezone.utc), erro
             )
+            _registar_alteracoes(ligacao, seed.id, recolha_id)
             recolha = dados.obter_recolha(ligacao, recolha_id)
             if recolha is None:
                 raise RuntimeError("A recolha desapareceu durante a gravação")
@@ -269,8 +279,7 @@ def _estado_recolha(resultados: Sequence[ResultadoDNS]) -> tuple[str, str | None
 
 def _registar_alteracoes(
     ligacao: psycopg.Connection, seed_id: int, recolha_id: int
-) -> list[str]:
-    avisos: list[str] = []
+) -> None:
     for atual in dados.listar_observacoes_recolha(ligacao, recolha_id):
         if not atual.sucesso:
             continue
@@ -279,20 +288,50 @@ def _registar_alteracoes(
         )
         if anterior is None:
             continue
-        try:
+        if _motivo_historico_ilegivel(anterior.id, anterior.dados) is None:
             _comparar_registos(ligacao, anterior, atual)
-        except HistoricoIlegivel as erro:
-            avisos.append(f"alterações não comparadas: {erro}")
         _comparar_ligacoes(ligacao, anterior, atual)
-    return avisos
 
 
-def _juntar_avisos(
-    estado: str, erro: str | None, avisos: Sequence[str]
-) -> tuple[str, str | None]:
-    if not avisos:
-        return estado, erro
-    return "parcial", "; ".join(mensagem for mensagem in [erro, *avisos] if mensagem)
+def _comparacoes_ignoradas(
+    observacoes: Sequence[ObservacaoFicha],
+) -> list[ComparacaoIgnorada]:
+    """Lista as comparações que a recolha não fez, a partir dos dados guardados.
+
+    Segue a regra de `obter_observacao_anterior_sucesso`: a anterior é a última
+    observação com sucesso, da mesma fonte, referência e ativo, observada antes
+    da atual.
+    """
+    ultima_por_chave: dict[tuple[str, str, str], ObservacaoFicha] = {}
+    ignoradas: list[ComparacaoIgnorada] = []
+    for atual in sorted(observacoes, key=lambda obs: (obs.observada_em, obs.id)):
+        if not atual.sucesso:
+            continue
+        chave = (atual.ativo, atual.fonte, atual.referencia)
+        anterior = ultima_por_chave.get(chave)
+        ultima_por_chave[chave] = atual
+        if anterior is None:
+            continue
+        motivo = _motivo_historico_ilegivel(anterior.id, anterior.dados)
+        if motivo is not None:
+            ignoradas.append(
+                ComparacaoIgnorada(
+                    recolha_id=atual.recolha_id,
+                    observacao_anterior_id=anterior.id,
+                    motivo=motivo,
+                )
+            )
+    return ignoradas
+
+
+def _motivo_historico_ilegivel(
+    observacao_id: int, dados_observacao: JsonObject
+) -> str | None:
+    try:
+        _registos(observacao_id, dados_observacao)
+    except HistoricoIlegivel as erro:
+        return str(erro)
+    return None
 
 
 def _comparar_registos(
@@ -300,8 +339,8 @@ def _comparar_registos(
     anterior: Observacao,
     atual: Observacao,
 ) -> None:
-    anteriores = _registos(anterior)
-    atuais = _registos(atual)
+    anteriores = _registos(anterior.id, anterior.dados)
+    atuais = _registos(atual.id, atual.dados)
     _guardar_diferencas(
         ligacao,
         anterior,
@@ -359,11 +398,12 @@ def _guardar_diferencas(
         )
 
 
-def _registos(observacao: Observacao) -> dict[str, JsonObject]:
-    dados_observacao = observacao.dados
+def _registos(
+    observacao_id: int, dados_observacao: JsonObject
+) -> dict[str, JsonObject]:
     if not isinstance(dados_observacao, dict):
         raise HistoricoIlegivel(
-            f"Os dados da observação {observacao.id} não são um objeto JSON."
+            f"Os dados da observação {observacao_id} não são um objeto JSON."
         )
 
     nome = dados_observacao.get("nome")
@@ -376,14 +416,14 @@ def _registos(observacao: Observacao) -> dict[str, JsonObject]:
         or not isinstance(registos, list)
     ):
         raise HistoricoIlegivel(
-            f"Os dados DNS da observação {observacao.id} têm uma estrutura inválida."
+            f"Os dados DNS da observação {observacao_id} têm uma estrutura inválida."
         )
 
     resultado: dict[str, JsonObject] = {}
     for registo in registos:
         if not isinstance(registo, dict):
             raise HistoricoIlegivel(
-                f"A observação {observacao.id} contém um registo DNS inválido."
+                f"A observação {observacao_id} contém um registo DNS inválido."
             )
         resultado[_chave_json(registo)] = registo
     return resultado
