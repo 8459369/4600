@@ -105,6 +105,9 @@ def principal() -> None:
         seed_parcial = _criar_seed("parcial.4600.test", "observacao")
         _testar_recolha_parcial(seed_parcial)
 
+        seed_historico = _criar_seed("historico.4600.test", "observacao")
+        _testar_historico_ilegivel_nao_bloqueia(seed_historico)
+
         seed_passiva = _criar_seed("passiva.4600.test", "passivo")
         _testar_seed_passiva(seed_passiva)
 
@@ -128,7 +131,7 @@ def _testar_evidencia_dns_invalida_falha() -> None:
         )
         try:
             servicos._registos(observacao)
-        except (TypeError, ValueError):
+        except servicos.HistoricoIlegivel:
             continue
         raise AssertionError("A evidência DNS malformada foi aceite")
 
@@ -263,6 +266,38 @@ def _testar_recolha_parcial(seed_id: int) -> None:
     )
     assert recolha.estado == "parcial"
     assert recolha.erro is not None and "TXT" in recolha.erro
+
+
+def _testar_historico_ilegivel_nao_bloqueia(seed_id: int) -> None:
+    recolha_base = servicos.recolher_dns(
+        seed_id, timeout=0.5, resolvedor=ResolvedorSimulado()
+    )
+    assert recolha_base.estado == "concluida"
+    with dados.ligar() as ligacao:
+        ligacao.execute(
+            """
+            UPDATE observacao
+            SET dados = '{"nome": "historico.4600.test"}'::jsonb
+            WHERE recolha_id = %s AND referencia = 'historico.4600.test/A'
+            """,
+            (recolha_base.id,),
+        )
+
+    recolha_afetada = servicos.recolher_dns(
+        seed_id, timeout=0.5, resolvedor=ResolvedorSimulado()
+    )
+    assert recolha_afetada.estado == "parcial"
+    assert recolha_afetada.erro is not None
+    assert "alterações não comparadas" in recolha_afetada.erro
+    with dados.ligar() as ligacao:
+        observacoes = dados.listar_observacoes_recolha(ligacao, recolha_afetada.id)
+    assert len(observacoes) == len(TIPOS_REGISTO)
+    assert all(observacao.sucesso for observacao in observacoes)
+
+    recolha_seguinte = servicos.recolher_dns(
+        seed_id, timeout=0.5, resolvedor=ResolvedorSimulado()
+    )
+    assert recolha_seguinte.estado == "concluida"
 
 
 def _testar_falha_total_preserva_historico(seed_id: int) -> None:

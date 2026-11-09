@@ -43,6 +43,13 @@ class ErroValidacao(Exception):
     pass
 
 
+class HistoricoIlegivel(Exception):
+    # Evidência anterior que a comparação não consegue ler. A recolha nova
+    # continua e fica registada como parcial, para que a comparação volte a
+    # funcionar na recolha seguinte.
+    pass
+
+
 def registar_organizacao(
     nome: str,
     nif: str,
@@ -233,10 +240,11 @@ def recolher_dns(
                     _guardar_ligacoes(
                         ligacao, observacao_id, ativo_origem_id, resultado.ligacoes
                     )
+            avisos = _registar_alteracoes(ligacao, seed.id, recolha_id)
+            estado, erro = _juntar_avisos(estado, erro, avisos)
             dados.atualizar_recolha(
                 ligacao, recolha_id, estado, datetime.now(timezone.utc), erro
             )
-            _registar_alteracoes(ligacao, seed.id, recolha_id)
             recolha = dados.obter_recolha(ligacao, recolha_id)
             if recolha is None:
                 raise RuntimeError("A recolha desapareceu durante a gravação")
@@ -261,7 +269,8 @@ def _estado_recolha(resultados: Sequence[ResultadoDNS]) -> tuple[str, str | None
 
 def _registar_alteracoes(
     ligacao: psycopg.Connection, seed_id: int, recolha_id: int
-) -> None:
+) -> list[str]:
+    avisos: list[str] = []
     for atual in dados.listar_observacoes_recolha(ligacao, recolha_id):
         if not atual.sucesso:
             continue
@@ -270,8 +279,20 @@ def _registar_alteracoes(
         )
         if anterior is None:
             continue
-        _comparar_registos(ligacao, anterior, atual)
+        try:
+            _comparar_registos(ligacao, anterior, atual)
+        except HistoricoIlegivel as erro:
+            avisos.append(f"alterações não comparadas: {erro}")
         _comparar_ligacoes(ligacao, anterior, atual)
+    return avisos
+
+
+def _juntar_avisos(
+    estado: str, erro: str | None, avisos: Sequence[str]
+) -> tuple[str, str | None]:
+    if not avisos:
+        return estado, erro
+    return "parcial", "; ".join(mensagem for mensagem in [erro, *avisos] if mensagem)
 
 
 def _comparar_registos(
@@ -341,7 +362,7 @@ def _guardar_diferencas(
 def _registos(observacao: Observacao) -> dict[str, JsonObject]:
     dados_observacao = observacao.dados
     if not isinstance(dados_observacao, dict):
-        raise TypeError(
+        raise HistoricoIlegivel(
             f"Os dados da observação {observacao.id} não são um objeto JSON."
         )
 
@@ -354,14 +375,14 @@ def _registos(observacao: Observacao) -> dict[str, JsonObject]:
         or tipo not in TIPOS_REGISTO
         or not isinstance(registos, list)
     ):
-        raise ValueError(
+        raise HistoricoIlegivel(
             f"Os dados DNS da observação {observacao.id} têm uma estrutura inválida."
         )
 
     resultado: dict[str, JsonObject] = {}
     for registo in registos:
         if not isinstance(registo, dict):
-            raise TypeError(
+            raise HistoricoIlegivel(
                 f"A observação {observacao.id} contém um registo DNS inválido."
             )
         resultado[_chave_json(registo)] = registo
