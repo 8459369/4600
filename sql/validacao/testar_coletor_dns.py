@@ -283,7 +283,7 @@ def _testar_historico_ilegivel_nao_bloqueia(seed_id: int) -> None:
         observacoes = dados.listar_observacoes_recolha(ligacao, recolha_afetada.id)
     assert len(observacoes) == len(TIPOS_REGISTO)
     assert all(observacao.sucesso for observacao in observacoes)
-    comparacoes = _comparacoes_da_recolha(seed_id, recolha_afetada.id)
+    comparacoes = _comparacoes_da_recolha(recolha_afetada.id)
     assert len(comparacoes) == 1
     assert "estrutura inválida" in comparacoes[0].motivo
     with create_app().test_client() as cliente:
@@ -295,7 +295,7 @@ def _testar_historico_ilegivel_nao_bloqueia(seed_id: int) -> None:
         seed_id, timeout=0.5, resolvedor=ResolvedorSimulado()
     )
     assert recolha_seguinte.estado == "concluida"
-    assert _comparacoes_da_recolha(seed_id, recolha_seguinte.id) == []
+    assert _comparacoes_da_recolha(recolha_seguinte.id) == []
 
 
 def _organizacao_da_seed(seed_id: int) -> int:
@@ -305,20 +305,8 @@ def _organizacao_da_seed(seed_id: int) -> int:
         ).fetchone()[0]
 
 
-def _comparacoes_da_recolha(
-    seed_id: int, recolha_id: int
-) -> list[ComparacaoIgnorada]:
-    ficha = servicos.obter_ficha_com_recolhas(_organizacao_da_seed(seed_id))
-    assert ficha is not None
-    _, _, seeds = ficha
-    recolhas = [
-        recolha
-        for seed in seeds
-        for recolha in seed.recolhas
-        if recolha.id == recolha_id
-    ]
-    assert len(recolhas) == 1
-    return recolhas[0].comparacoes_ignoradas
+def _comparacoes_da_recolha(recolha_id: int) -> list[ComparacaoIgnorada]:
+    return servicos.comparacoes_ignoradas_da_recolha(recolha_id)
 
 
 def _testar_falha_total_preserva_historico(seed_id: int) -> None:

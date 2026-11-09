@@ -85,6 +85,9 @@ ajustado com `--timeout` e o resolvedor pode ser indicado com um ou mais
 qualquer pedido DNS. Recolhas sucessivas conservam as observações e registam alterações de
 registos ou ligações na ficha da organização.
 
+Se a recolha anterior tiver dados que não se leem, a comparação não se faz e o
+comando imprime uma linha por comparação em falta. Isso não altera o código de saída.
+
 ## Executa a aplicação
 
 ```sh
