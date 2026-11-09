@@ -1,6 +1,7 @@
+from collections.abc import Sequence
 from datetime import datetime
 from ipaddress import IPv4Address, IPv6Address
-from typing import Any, Final
+from typing import Final
 
 import psycopg
 from flask import current_app
@@ -11,6 +12,7 @@ from observatorio.modelos import (
     AlteracaoFicha,
     Ativo,
     Dominio,
+    JsonObject,
     Ligacao,
     LigacaoFicha,
     Observacao,
@@ -254,7 +256,7 @@ def criar_observacao(
     ativo_id: int,
     fonte: str,
     referencia: str,
-    dados: Any,
+    dados: JsonObject,
     sucesso: bool,
     erro: str | None = None,
     observada_em: datetime | None = None,
@@ -273,7 +275,7 @@ def criar_observacao(
             ativo_id,
             fonte,
             referencia,
-            Jsonb(dados),
+            Jsonb(dict(dados)),
             sucesso,
             erro,
             observada_em,
@@ -312,7 +314,7 @@ def criar_alteracao(
     categoria: str,
     tipo: str,
     chave: str,
-    dados: Any,
+    dados: JsonObject,
 ) -> None:
     ligacao.execute(
         """
@@ -381,19 +383,21 @@ def obter_observacao_anterior_sucesso(
         return cursor.fetchone()
 
 
-def listar_recolhas_seed(
-    ligacao: psycopg.Connection, seed_id: int
+def listar_recolhas_seeds(
+    ligacao: psycopg.Connection, seed_ids: Sequence[int]
 ) -> list[Recolha]:
+    if not seed_ids:
+        return []
     with ligacao.cursor(row_factory=class_row(Recolha)) as cursor:
         cursor.execute(
             """
             SELECT id, seed_id, coletor, modo, estado,
                    iniciada_em, terminada_em, erro
             FROM recolha
-            WHERE seed_id = %s
-            ORDER BY iniciada_em DESC, id DESC
+            WHERE seed_id = ANY(%s)
+            ORDER BY seed_id, iniciada_em DESC, id DESC
             """,
-            (seed_id,),
+            (list(seed_ids),),
         )
         return cursor.fetchall()
 
@@ -415,13 +419,16 @@ def listar_observacoes_recolha(
         return cursor.fetchall()
 
 
-def listar_observacoes_ficha(
-    ligacao: psycopg.Connection, recolha_id: int
+def listar_observacoes_ficha_recolhas(
+    ligacao: psycopg.Connection, recolha_ids: Sequence[int]
 ) -> list[ObservacaoFicha]:
+    if not recolha_ids:
+        return []
     with ligacao.cursor(row_factory=class_row(ObservacaoFicha)) as cursor:
         cursor.execute(
             """
-            SELECT observacao.id, observacao.fonte, observacao.referencia,
+            SELECT observacao.id, observacao.recolha_id,
+                   observacao.fonte, observacao.referencia,
                    CASE ativo.tipo
                        WHEN 'nome_dns' THEN dominio.nome
                        ELSE ativo.endereco_ip::text
@@ -431,10 +438,10 @@ def listar_observacoes_ficha(
             FROM observacao
             JOIN ativo ON ativo.id = observacao.ativo_id
             LEFT JOIN dominio ON dominio.id = ativo.dominio_id
-            WHERE observacao.recolha_id = %s
-            ORDER BY observacao.id
+            WHERE observacao.recolha_id = ANY(%s)
+            ORDER BY observacao.recolha_id, observacao.id
             """,
-            (recolha_id,),
+            (list(recolha_ids),),
         )
         return cursor.fetchall()
 
@@ -455,9 +462,11 @@ def listar_ligacoes_observacao(
         return cursor.fetchall()
 
 
-def listar_ligacoes_ficha(
-    ligacao: psycopg.Connection, recolha_id: int
+def listar_ligacoes_ficha_recolhas(
+    ligacao: psycopg.Connection, recolha_ids: Sequence[int]
 ) -> list[LigacaoFicha]:
+    if not recolha_ids:
+        return []
     with ligacao.cursor(row_factory=class_row(LigacaoFicha)) as cursor:
         cursor.execute(
             """
@@ -470,16 +479,17 @@ def listar_ligacoes_ficha(
                 FROM ativo
                 LEFT JOIN dominio ON dominio.id = ativo.dominio_id
             )
-            SELECT ligacao.id, ligacao.observacao_id, ligacao.tipo,
+            SELECT ligacao.id, observacao.recolha_id,
+                   ligacao.observacao_id, ligacao.tipo,
                    origem.nome AS origem, destino.nome AS destino
             FROM ligacao
             JOIN observacao ON observacao.id = ligacao.observacao_id
             JOIN ativos origem ON origem.id = ligacao.origem_ativo_id
             JOIN ativos destino ON destino.id = ligacao.destino_ativo_id
-            WHERE observacao.recolha_id = %s
-            ORDER BY ligacao.id
+            WHERE observacao.recolha_id = ANY(%s)
+            ORDER BY observacao.recolha_id, ligacao.id
             """,
-            (recolha_id,),
+            (list(recolha_ids),),
         )
         return cursor.fetchall()
 
@@ -499,7 +509,8 @@ def listar_ligacoes_ficha_observacao(
                 FROM ativo
                 LEFT JOIN dominio ON dominio.id = ativo.dominio_id
             )
-            SELECT ligacao.id, ligacao.observacao_id, ligacao.tipo,
+            SELECT ligacao.id, observacao.recolha_id,
+                   ligacao.observacao_id, ligacao.tipo,
                    origem.nome AS origem, destino.nome AS destino
             FROM ligacao
             JOIN observacao ON observacao.id = ligacao.observacao_id
@@ -513,13 +524,15 @@ def listar_ligacoes_ficha_observacao(
         return cursor.fetchall()
 
 
-def listar_alteracoes_ficha_seed(
-    ligacao: psycopg.Connection, seed_id: int
+def listar_alteracoes_ficha_seeds(
+    ligacao: psycopg.Connection, seed_ids: Sequence[int]
 ) -> list[AlteracaoFicha]:
+    if not seed_ids:
+        return []
     with ligacao.cursor(row_factory=class_row(AlteracaoFicha)) as cursor:
         cursor.execute(
             """
-            SELECT alteracao.id, atual.referencia,
+            SELECT alteracao.id, recolha_atual.seed_id, atual.referencia,
                    alteracao.categoria, alteracao.tipo, alteracao.dados,
                    anterior.recolha_id AS recolha_anterior_id,
                    atual.recolha_id AS recolha_atual_id,
@@ -532,9 +545,10 @@ def listar_alteracoes_ficha_seed(
               ON atual.id = alteracao.observacao_atual_id
             JOIN recolha recolha_atual
               ON recolha_atual.id = atual.recolha_id
-            WHERE recolha_atual.seed_id = %s
-            ORDER BY atual.observada_em DESC, alteracao.id DESC
+            WHERE recolha_atual.seed_id = ANY(%s)
+            ORDER BY recolha_atual.seed_id,
+                     atual.observada_em DESC, alteracao.id DESC
             """,
-            (seed_id,),
+            (list(seed_ids),),
         )
         return cursor.fetchall()

@@ -13,6 +13,9 @@
     {% if recolha.erro %}
       <p class="aviso erro">{{ recolha.erro }}</p>
     {% endif %}
+    {% for comparacao in recolha.comparacoes_ignoradas %}
+      <p class="aviso">Comparação de registos com a observação #{{ comparacao.observacao_anterior_id }} não feita: {{ comparacao.motivo }}</p>
+    {% endfor %}
     {% if recolha.observacoes %}
       <h5>Observações DNS</h5>
       <table>
